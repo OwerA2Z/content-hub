@@ -1,0 +1,203 @@
+import express, { type NextFunction, type Request, type Response } from "express";
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
+import { config } from "./config";
+import { repository, repositoryKind, repositoryReady } from "./db/repository";
+import { wechatProvider } from "./channels/wechat";
+import { uploadArticleSchema, articleStatusSchema, type ApiErrorBody } from "../shared/contracts";
+import { clearSession, requireAdminSession, setSession } from "./auth";
+import { userStore, userStoreReady, validateNewUser } from "./users";
+
+const app = express();
+app.use(express.json({ limit: "2mb" }));
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const recoveryAttempts = new Map<string, { count: number; resetAt: number }>();
+
+const sendError = (res: Response, status: number, code: string, message: string, details?: unknown) => {
+  const body: ApiErrorBody = { error: { code, message, ...(details === undefined ? {} : { details }) } };
+  res.status(status).json(body);
+};
+
+const requireApiToken = (req: Request, res: Response, next: NextFunction) => {
+  const header = req.header("authorization");
+  if (header !== `Bearer ${config.API_TOKEN}`) return sendError(res, 401, "UNAUTHORIZED", "需要有效的 Bearer Token");
+  next();
+};
+
+const requireAdminOrApiToken = (req: Request, res: Response, next: NextFunction) => {
+  if (req.header("authorization") === `Bearer ${config.API_TOKEN}`) return next();
+  return requireAdminSession(req, res, next);
+};
+
+app.get("/health", (_req, res) => res.json({ data: { status: "ok" } }));
+app.get("/ready", async (_req, res) => {
+  try {
+    await repositoryReady;
+    await userStoreReady;
+    return res.json({ data: { status: "ready", database: repositoryKind } });
+  } catch {
+    return res.status(503).json({ error: { code: "NOT_READY", message: "数据库尚未就绪" } });
+  }
+});
+
+app.post("/api/v1/auth/login", (req, res) => {
+  const key = req.ip ?? "unknown";
+  const now = Date.now();
+  const attempts = loginAttempts.get(key);
+  if (attempts && attempts.resetAt > now && attempts.count >= 10) return sendError(res, 429, "RATE_LIMITED", "登录尝试过于频繁，请稍后再试");
+  if (!attempts || attempts.resetAt <= now) loginAttempts.set(key, { count: 1, resetAt: now + 60_000 });
+  else attempts.count += 1;
+  void (async () => {
+    const user = await userStore.authenticate(String(req.body?.username ?? ""), String(req.body?.password ?? ""));
+    if (!user) return sendError(res, 401, "ADMIN_UNAUTHORIZED", "管理员账号或密码错误");
+    loginAttempts.delete(key);
+    setSession(res, user.username, user.sessionVersion);
+    return res.json({ data: { username: user.username } });
+  })().catch(() => sendError(res, 500, "INTERNAL_ERROR", "登录服务暂时不可用"));
+});
+app.get("/api/v1/setup/status", async (_req, res, next) => { try { return res.json({ data: { required: !(await userStore.hasUsers()) } }); } catch (error) { return next(error); } });
+app.post("/api/v1/setup/initialize", async (req, res, next) => {
+  try {
+    const input = z.object({ username: z.string().trim(), password: z.string() }).parse(req.body);
+    validateNewUser(input.username, input.password);
+    const user = await userStore.createFirstUser(input.username, input.password);
+    setSession(res, user.username, user.sessionVersion);
+    return res.status(201).json({ data: { username: user.username } });
+  } catch (error) {
+    if (error instanceof Error && /已初始化|用户名|密码/.test(error.message)) return sendError(res, 409, "SETUP_UNAVAILABLE", error.message);
+    return next(error);
+  }
+});
+app.post("/api/v1/auth/reset-password", async (req, res, next) => {
+  try {
+    const key = req.ip ?? "unknown";
+    const now = Date.now();
+    const attempts = recoveryAttempts.get(key);
+    if (attempts && attempts.resetAt > now && attempts.count >= 5) return sendError(res, 429, "RATE_LIMITED", "恢复尝试过于频繁，请稍后再试");
+    if (!attempts || attempts.resetAt <= now) recoveryAttempts.set(key, { count: 1, resetAt: now + 15 * 60_000 });
+    else attempts.count += 1;
+    const input = z.object({ username: z.string().trim(), recoveryCode: z.string().trim().min(20).max(128), password: z.string() }).parse(req.body);
+    validateNewUser(input.username, input.password);
+    const success = await userStore.resetPassword(input.username, input.recoveryCode, input.password);
+    if (!success) return sendError(res, 400, "INVALID_RECOVERY_CODE", "恢复码无效、已使用或已过期");
+    await repository.recordAudit({ action: "auth.password.reset", actorType: "system", actorId: input.username });
+    recoveryAttempts.delete(key);
+    setSession(res, input.username, (await userStore.getSessionVersion(input.username)) ?? 0);
+    return res.json({ data: { username: input.username } });
+  } catch (error) { return next(error); }
+});
+app.post("/api/v1/auth/logout", (_req, res) => { clearSession(res); return res.json({ data: { ok: true } }); });
+app.get("/api/v1/auth/me", requireAdminSession, (_req, res) => res.json({ data: { username: res.locals.adminUsername } }));
+
+app.post("/api/v1/articles/upload", requireApiToken, async (req, res, next) => {
+  try {
+    const parsed = uploadArticleSchema.safeParse(req.body);
+    if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", "文章字段校验失败", parsed.error.flatten());
+    const result = await repository.createOrGet(parsed.data);
+    await repository.recordAudit({ action: result.created ? "article.upload" : "article.upload.idempotent", actorType: "api", articleId: result.article.id });
+    const capabilities = await wechatProvider.getCapabilities();
+    return res.status(result.created ? 201 : 200).json({ data: { article: result.article, created: result.created, capabilities } });
+  } catch (error) { return next(error); }
+});
+
+app.get("/api/v1/articles", requireAdminOrApiToken, async (req, res, next) => {
+  try {
+    const query = z.object({
+      q: z.string().optional(),
+      status: articleStatusSchema.optional(),
+      page: z.coerce.number().int().min(1).default(1),
+      pageSize: z.coerce.number().int().min(1).max(100).default(20),
+      includeArchived: z.coerce.boolean().default(false),
+    }).parse(req.query);
+    const result = await repository.list(query);
+    return res.json({ data: result.items, meta: { page: query.page, pageSize: query.pageSize, total: result.total } });
+  } catch (error) { return next(error); }
+});
+
+app.get("/api/v1/articles/:id", requireAdminOrApiToken, async (req, res, next) => {
+  try {
+    const article = await repository.get(String(req.params.id));
+    if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在");
+    return res.json({ data: article });
+  } catch (error) { return next(error); }
+});
+
+app.post("/api/v1/articles/:id/:action", requireAdminSession, async (req, res, next) => {
+  try {
+    const action = z.enum(["archive", "restore"]).parse(String(req.params.action));
+    const status = action === "archive" ? "archived" : "uploaded";
+    const article = await repository.updateStatus(String(req.params.id), status);
+    if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在");
+    await repository.recordAudit({ action: `article.${action}`, actorType: "admin", actorId: res.locals.adminUsername, articleId: article.id });
+    return res.json({ data: article });
+  } catch (error) { return next(error); }
+});
+
+app.get("/api/v1/channels/wechat/capabilities", requireAdminSession, async (_req, res, next) => {
+  try { return res.json({ data: await wechatProvider.getCapabilities() }); } catch (error) { return next(error); }
+});
+
+app.post("/api/v1/articles/:id/wechat/:action", requireAdminSession, async (req, res, next) => {
+  try {
+    const action = z.enum(["draft", "publish"]).parse(String(req.params.action));
+    const draftId = z.object({ draftId: z.string().trim().min(1).optional() }).parse(req.body ?? {}).draftId;
+    const article = await repository.get(String(req.params.id));
+    if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在");
+    const capabilities = await wechatProvider.getCapabilities();
+    if ((action === "draft" && !capabilities.draft) || (action === "publish" && !capabilities.publish)) {
+      return sendError(res, 403, "CHANNEL_CAPABILITY_UNAVAILABLE", capabilities.reason ?? "当前公众号不支持此操作");
+    }
+    const operation = await repository.createOperation(article.id, action);
+    await repository.recordAudit({ action: `wechat.${action}`, actorType: "admin", actorId: res.locals.adminUsername, articleId: article.id, operationId: operation.id });
+    void processChannelOperation(operation.id, article.id, action, draftId);
+    return res.status(202).json({ data: operation });
+  } catch (error) { return next(error); }
+});
+
+app.post("/api/v1/articles/:id/wechat/retry", requireAdminSession, async (req, res, next) => {
+  try {
+    const articleId = String(req.params.id);
+    const article = await repository.get(articleId);
+    if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在");
+    const failed = await repository.getLatestFailedOperation(articleId);
+    if (!failed) return sendError(res, 409, "NO_FAILED_OPERATION", "没有可重试的微信操作");
+    const operation = await repository.createOperation(articleId, failed.action);
+    void processChannelOperation(operation.id, articleId, failed.action, failed.externalId);
+    return res.status(202).json({ data: operation });
+  } catch (error) { return next(error); }
+});
+
+async function processChannelOperation(operationId: string, articleId: string, action: "draft" | "publish", draftId?: string) {
+  try {
+    const article = await repository.get(articleId);
+    if (!article) throw new Error("文章不存在");
+    const result = action === "draft" ? await wechatProvider.createDraft(article) : await wechatProvider.publish(article, draftId);
+    await repository.completeOperation(operationId, "succeeded", { externalId: result.externalId });
+    await repository.updateStatus(articleId, action === "draft" ? "draft_ready" : "published");
+  } catch (error) {
+    await repository.completeOperation(operationId, "failed", { errorMessage: error instanceof Error ? error.message : "渠道操作失败" });
+    await repository.updateStatus(articleId, "sync_failed");
+    await repository.recordAudit({ action: `wechat.${action}.failed`, actorType: "system", articleId, operationId, success: false });
+  }
+}
+
+export async function resumePendingOperations() {
+  const pending = await repository.listPendingOperations();
+  for (const operation of pending) void processChannelOperation(operation.id, operation.articleId, operation.action, operation.externalId);
+}
+
+app.get("/api/v1/operations/:id", requireAdminOrApiToken, async (req, res, next) => {
+  try {
+    const operation = await repository.getOperation(String(req.params.id));
+    if (!operation) return sendError(res, 404, "NOT_FOUND", "操作不存在");
+    return res.json({ data: operation });
+  } catch (error) { return next(error); }
+});
+
+app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  const requestId = randomUUID();
+  console.error(JSON.stringify({ level: "error", requestId, message: error instanceof Error ? error.message : "unknown error" }));
+  return sendError(res, 500, "INTERNAL_ERROR", "服务暂时不可用", { requestId });
+});
+
+export { app };

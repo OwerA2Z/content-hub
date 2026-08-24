@@ -9,7 +9,7 @@ if (!config.DATABASE_URL) {
 }
 
 const pool = new Pool({ connectionString: config.DATABASE_URL });
-const migrations = ["0001_init", "0002_users", "0003_recovery_codes", "0004_session_version"];
+const migrations = ["0001_init", "0002_users", "0003_recovery_codes", "0004_session_version", "0005_publish_confirmation", "0006_content_profile"];
 
 try {
   await pool.query("CREATE TABLE IF NOT EXISTS schema_migrations (version varchar(100) PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())");

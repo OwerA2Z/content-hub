@@ -7,6 +7,8 @@ import { wechatProvider } from "./channels/wechat";
 import { uploadArticleSchema, articleStatusSchema, type ApiErrorBody } from "../shared/contracts";
 import { clearSession, requireAdminSession, setSession } from "./auth";
 import { userStore, userStoreReady, validateNewUser } from "./users";
+import { requireAiReadToken, toAiArticle } from "./ai";
+import { checkDuplicate, type DuplicateInput } from "./dedup";
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -122,6 +124,54 @@ app.get("/api/v1/articles/:id", requireAdminOrApiToken, async (req, res, next) =
   } catch (error) { return next(error); }
 });
 
+app.get("/api/v1/ai/articles", requireAiReadToken, async (req, res, next) => {
+  try {
+    const query = z.object({
+      q: z.string().trim().max(200).optional(),
+      source: z.string().trim().max(100).optional(),
+      from: z.string().datetime({ offset: true }).optional(),
+      to: z.string().datetime({ offset: true }).optional(),
+      limit: z.coerce.number().int().min(1).max(50).default(20),
+      cursor: z.string().max(500).optional(),
+    }).parse(req.query);
+    const page = await repository.listAiArticles(query);
+    return res.json({ data: { items: page.items.map((article) => toAiArticle(article, "text")), nextCursor: page.nextCursor, hasMore: page.hasMore, dataVersion: "published-v1" } });
+  } catch (error) { return next(error); }
+});
+
+app.get("/api/v1/ai/articles/:id", requireAiReadToken, async (req, res, next) => {
+  try {
+    const format = z.enum(["text", "html"]).default("text").parse(req.query.format);
+    const article = await repository.getAiArticle(String(req.params.id));
+    if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在");
+    return res.json({ data: toAiArticle(article, format) });
+  } catch (error) { return next(error); }
+});
+
+app.post("/api/v1/ai/articles/check-duplicate", requireAiReadToken, async (req, res, next) => {
+  try {
+    const input = z.object({
+      title: z.string().trim().min(1).max(120),
+      summary: z.string().trim().max(2_000).optional(),
+      outline: z.array(z.string().trim().max(300)).max(30).optional(),
+      topics: z.array(z.string().trim().max(100)).max(20).optional(),
+      keywords: z.array(z.string().trim().max(100)).max(50).optional(),
+      content: z.string().max(2_000_000).optional(),
+    }).parse(req.body) as DuplicateInput;
+    const result = checkDuplicate(input, await repository.listDedupCandidates());
+    return res.json({ data: { ...result, advisory: true } });
+  } catch (error) { return next(error); }
+});
+
+app.get("/api/v1/articles/:id/similar", requireAdminOrApiToken, async (req, res, next) => {
+  try {
+    const article = await repository.get(String(req.params.id));
+    if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在");
+    const result = checkDuplicate({ title: article.title, summary: article.summary, outline: article.outline, topics: article.topics, keywords: article.keywords, content: article.content }, (await repository.listDedupCandidates()).filter((candidate) => candidate.id !== article.id));
+    return res.json({ data: result });
+  } catch (error) { return next(error); }
+});
+
 app.post("/api/v1/articles/:id/:action", requireAdminSession, async (req, res, next) => {
   try {
     const action = z.enum(["archive", "restore"]).parse(String(req.params.action));
@@ -171,9 +221,24 @@ async function processChannelOperation(operationId: string, articleId: string, a
   try {
     const article = await repository.get(articleId);
     if (!article) throw new Error("文章不存在");
-    const result = action === "draft" ? await wechatProvider.createDraft(article) : await wechatProvider.publish(article, draftId);
+    const existingOperation = await repository.getOperation(operationId);
+    const existingPublishId = action === "publish" ? existingOperation?.externalId : undefined;
+    const result = action === "draft" ? await wechatProvider.createDraft(article) : { externalId: existingPublishId ?? (await wechatProvider.publish(article, draftId)).externalId };
+    if (action === "draft") {
+      await repository.completeOperation(operationId, "succeeded", { externalId: result.externalId });
+      await repository.updateStatus(articleId, "draft_ready");
+      return;
+    }
+    await repository.setOperationExternalId(operationId, result.externalId);
+    await repository.updateStatus(articleId, "publish_pending");
+    let publishStatus: "pending" | "succeeded" | "failed" = "pending";
+    for (let attempt = 0; attempt < 5 && publishStatus === "pending"; attempt += 1) {
+      publishStatus = await wechatProvider.getPublishStatus(result.externalId);
+      if (publishStatus === "pending") await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+    if (publishStatus !== "succeeded") throw new Error(publishStatus === "failed" ? "微信公众号发布失败" : "微信公众号发布状态确认超时");
+    await repository.confirmPublish(articleId, result.externalId, new Date().toISOString());
     await repository.completeOperation(operationId, "succeeded", { externalId: result.externalId });
-    await repository.updateStatus(articleId, action === "draft" ? "draft_ready" : "published");
   } catch (error) {
     await repository.completeOperation(operationId, "failed", { errorMessage: error instanceof Error ? error.message : "渠道操作失败" });
     await repository.updateStatus(articleId, "sync_failed");

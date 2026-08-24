@@ -5,6 +5,7 @@ const configSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   API_TOKEN: z.string().min(16).default("local-development-api-token"),
   SESSION_SECRET: z.string().min(16).default("local-development-session-secret"),
+  AI_READ_TOKEN: z.string().min(16).optional(),
   DATABASE_URL: z.string().url().optional(),
   WECHAT_APP_ID: z.string().optional(),
   WECHAT_APP_SECRET: z.string().optional(),

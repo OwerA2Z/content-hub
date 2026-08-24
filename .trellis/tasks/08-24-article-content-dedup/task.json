@@ -1,8 +1,8 @@
 {
-  "id": "wechat-article-platform",
-  "name": "wechat-article-platform",
-  "title": "微信公众号文章管理平台",
-  "description": "",
+  "id": "article-content-dedup",
+  "name": "article-content-dedup",
+  "title": "文章内容画像与防重复",
+  "description": "保存文章梗概、提纲、主题和关键词，提供精确/相似内容检测，帮助 AI 生成非重复文章。",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,
@@ -10,7 +10,7 @@
   "priority": "P2",
   "creator": "wanghao",
   "assignee": "wanghao",
-  "createdAt": "2026-08-21",
+  "createdAt": "2026-08-24",
   "completedAt": null,
   "branch": null,
   "base_branch": "main",
@@ -18,11 +18,8 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [
-    "08-22-ai-readable-articles",
-    "08-24-article-content-dedup"
-  ],
-  "parent": null,
+  "children": [],
+  "parent": "08-21-wechat-article-platform",
   "relatedFiles": [],
   "notes": "",
   "meta": {}

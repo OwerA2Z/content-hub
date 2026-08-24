@@ -1,8 +1,8 @@
 {
-  "id": "wechat-article-platform",
-  "name": "wechat-article-platform",
-  "title": "微信公众号文章管理平台",
-  "description": "",
+  "id": "ai-readable-articles",
+  "name": "ai-readable-articles",
+  "title": "AI 可读文章接口",
+  "description": "为 AI 提供已发布文章的安全只读读取接口，支持筛选、分页、稳定内容契约和权限隔离。",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,
@@ -10,7 +10,7 @@
   "priority": "P2",
   "creator": "wanghao",
   "assignee": "wanghao",
-  "createdAt": "2026-08-21",
+  "createdAt": "2026-08-22",
   "completedAt": null,
   "branch": null,
   "base_branch": "main",
@@ -18,11 +18,8 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [
-    "08-22-ai-readable-articles",
-    "08-24-article-content-dedup"
-  ],
-  "parent": null,
+  "children": [],
+  "parent": "08-21-wechat-article-platform",
   "relatedFiles": [],
   "notes": "",
   "meta": {}

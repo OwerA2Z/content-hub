@@ -22,6 +22,10 @@ export const uploadArticleSchema = z.object({
   coverUrl: z.string().url().max(2_000).optional(),
   images: z.array(z.string().url().max(2_000)).max(100).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  summary: z.string().trim().min(1).max(2_000).optional(),
+  outline: z.array(z.string().trim().min(1).max(300)).max(30).optional(),
+  topics: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+  keywords: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
 });
 
 export type UploadArticleInput = z.infer<typeof uploadArticleSchema>;
@@ -38,10 +42,18 @@ export interface Article {
   coverUrl?: string;
   images: string[];
   metadata: Record<string, unknown>;
+  summary?: string;
+  outline: string[];
+  topics: string[];
+  keywords: string[];
+  contentHash: string;
   status: ArticleStatus;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string;
+  publishedAt?: string;
+  wechatPublishId?: string;
+  publishConfirmed: boolean;
 }
 
 export interface ChannelCapabilities {

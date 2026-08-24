@@ -19,6 +19,8 @@ docker compose up -d --build
 
 应用和 PostgreSQL 会一起启动，文章数据保存在 `postgres_data` volume 中。查看日志：
 
+完整生产部署、HTTPS、备份恢复、升级和回滚说明见 [docs/deployment.md](docs/deployment.md)。
+
 ```bash
 docker compose logs -f app
 ```
@@ -76,3 +78,5 @@ docker compose exec postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' 
 ```
 
 微信公众号真实草稿/发布调用需要补充服务端凭证和账号权限；未配置凭证时平台会安全降级为文章保存与管理。
+
+AI 只读接口需要配置 `AI_READ_TOKEN`，只返回微信公众号确认发布的文章，详情默认返回纯文本，接口说明见 [docs/api.md](docs/api.md)。

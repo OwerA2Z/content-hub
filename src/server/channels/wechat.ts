@@ -10,6 +10,7 @@ export interface ChannelProvider {
   getCapabilities(): Promise<ChannelCapabilities>;
   createDraft(article: Article): Promise<ChannelResult>;
   publish(article: Article, draftId?: string): Promise<ChannelResult>;
+  getPublishStatus(publishId: string): Promise<"pending" | "succeeded" | "failed">;
 }
 
 class WechatApiError extends Error {
@@ -52,6 +53,14 @@ export class WechatProvider implements ChannelProvider {
     const response = await this.call<{ publish_id?: string }>("/cgi-bin/freepublish/submit", { method: "POST", body: JSON.stringify({ media_id: draftId }) });
     if (!response.publish_id) throw new Error("微信公众号未返回发布任务 ID");
     return { externalId: response.publish_id };
+  }
+
+  async getPublishStatus(publishId: string): Promise<"pending" | "succeeded" | "failed"> {
+    if (!config.WECHAT_APP_ID || !config.WECHAT_APP_SECRET) return "succeeded";
+    const response = await this.call<{ publish_status?: number }>("/cgi-bin/freepublish/get", { method: "POST", body: JSON.stringify({ publish_id: publishId }) });
+    if (response.publish_status === 1) return "succeeded";
+    if (response.publish_status === 2) return "failed";
+    return "pending";
   }
 
   private async getAccessToken() {

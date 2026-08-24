@@ -53,6 +53,15 @@ GET /api/v1/ai/articles/:id?format=html
 
 AI Token 没有上传、修改、归档、恢复或发布权限。只有微信公众号确认发布成功的文章才会出现在结果中。
 
+AI 上传新文章使用独立写入 Token：
+
+```bash
+curl -X POST http://localhost:3000/api/v1/ai/articles \
+  -H 'Authorization: Bearer <AI_WRITE_TOKEN>' \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"AI 新文章","content":"<p>正文</p>","contentFormat":"html"}'
+```
+
 ## AI 防重复检测
 
 外部 AI 生成新文章前，可以提交文章画像进行重复检测：
@@ -101,6 +110,16 @@ AI 使用只读接口获取下一个文章任务：
 GET /api/v1/ai/content-plan/next
 GET /api/v1/ai/content-plan/briefs/:id
 ```
+
+管理员 Token 管理接口：
+
+```text
+GET  /api/v1/admin/tokens
+POST /api/v1/admin/tokens
+POST /api/v1/admin/tokens/:id/revoke
+```
+
+创建 Token 时提交 `{ "name": "AI读取", "kind": "ai_read" }`。Token 明文只在创建响应中返回一次，数据库只保存 hash。
 
 返回内容包括战略目标、系列上下文、标题方向、核心问题、必须覆盖、必须避免、创新要求和相关历史文章摘要。生成前仍应调用防重复检测接口。
 

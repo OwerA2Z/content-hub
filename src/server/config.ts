@@ -6,6 +6,8 @@ const configSchema = z.object({
   API_TOKEN: z.string().min(16).default("local-development-api-token"),
   SESSION_SECRET: z.string().min(16).default("local-development-session-secret"),
   AI_READ_TOKEN: z.string().min(16).optional(),
+  AI_WRITE_TOKEN: z.string().min(16).optional(),
+  PUBLIC_BASE_URL: z.string().url().optional(),
   DATABASE_URL: z.string().url().optional(),
   WECHAT_APP_ID: z.string().optional(),
   WECHAT_APP_SECRET: z.string().optional(),

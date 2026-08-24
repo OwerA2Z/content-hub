@@ -34,6 +34,7 @@ DATABASE_URL=postgresql://article_user:随机数据库密码@postgres:5432/artic
 API_TOKEN=随机的外部上传令牌
 SESSION_SECRET=随机的会话签名密钥
 AI_READ_TOKEN=随机的AI只读令牌
+AI_WRITE_TOKEN=随机的AI写入令牌
 ```
 
 如果要接入微信公众号，再配置：
@@ -120,6 +121,8 @@ curl -X POST https://content.example.com/api/v1/articles/upload \
 ```
 
 AI 系统使用独立的 `AI_READ_TOKEN`，只能读取已由微信公众号确认发布的文章，不能上传、修改、归档或发布。
+
+AI 上传新文章使用 `AI_WRITE_TOKEN`，管理员也可以在后台渠道设置中生成数据库 Token。Token 明文只显示一次。
 
 ## 6. 管理员密码恢复
 

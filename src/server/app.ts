@@ -7,9 +7,10 @@ import { wechatProvider } from "./channels/wechat";
 import { uploadArticleSchema, articleStatusSchema, type ApiErrorBody } from "../shared/contracts";
 import { clearSession, requireAdminSession, setSession } from "./auth";
 import { userStore, userStoreReady, validateNewUser } from "./users";
-import { requireAiReadToken, toAiArticle } from "./ai";
+import { requireAiReadToken, requireAiWriteToken, toAiArticle } from "./ai";
 import { checkDuplicate, type DuplicateInput } from "./dedup";
 import { contentPlanningStore } from "./content-planning";
+import { tokenStore, tokenStoreReady, type TokenKind } from "./tokens";
 import { contentBriefSchema, contentSeriesSchema, contentStrategySchema, briefStatusSchema, strategyStatusSchema } from "../shared/contracts";
 
 const app = express();
@@ -22,14 +23,17 @@ const sendError = (res: Response, status: number, code: string, message: string,
   res.status(status).json(body);
 };
 
-const requireApiToken = (req: Request, res: Response, next: NextFunction) => {
+const requireApiToken = async (req: Request, res: Response, next: NextFunction) => {
   const header = req.header("authorization");
-  if (header !== `Bearer ${config.API_TOKEN}`) return sendError(res, 401, "UNAUTHORIZED", "需要有效的 Bearer Token");
+  const supplied = header?.replace(/^Bearer\s+/i, "") ?? "";
+  const envMatch = header === `Bearer ${config.API_TOKEN}`;
+  if (!envMatch && !(supplied && await tokenStore.verify("api", supplied))) return sendError(res, 401, "UNAUTHORIZED", "需要有效的 Bearer Token");
   next();
 };
 
-const requireAdminOrApiToken = (req: Request, res: Response, next: NextFunction) => {
-  if (req.header("authorization") === `Bearer ${config.API_TOKEN}`) return next();
+const requireAdminOrApiToken = async (req: Request, res: Response, next: NextFunction) => {
+  const supplied = req.header("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
+  if (req.header("authorization") === `Bearer ${config.API_TOKEN}` || (supplied && await tokenStore.verify("api", supplied))) return next();
   return requireAdminSession(req, res, next);
 };
 
@@ -38,6 +42,7 @@ app.get("/ready", async (_req, res) => {
   try {
     await repositoryReady;
     await userStoreReady;
+    await tokenStoreReady;
     return res.json({ data: { status: "ready", database: repositoryKind } });
   } catch {
     return res.status(503).json({ error: { code: "NOT_READY", message: "数据库尚未就绪" } });
@@ -93,7 +98,7 @@ app.post("/api/v1/auth/reset-password", async (req, res, next) => {
 app.post("/api/v1/auth/logout", (_req, res) => { clearSession(res); return res.json({ data: { ok: true } }); });
 app.get("/api/v1/auth/me", requireAdminSession, (_req, res) => res.json({ data: { username: res.locals.adminUsername } }));
 
-app.post("/api/v1/articles/upload", requireApiToken, async (req, res, next) => {
+async function handleArticleUpload(req: Request, res: Response, next: NextFunction) {
   try {
     const parsed = uploadArticleSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", "文章字段校验失败", parsed.error.flatten());
@@ -109,7 +114,10 @@ app.post("/api/v1/articles/upload", requireApiToken, async (req, res, next) => {
     const capabilities = await wechatProvider.getCapabilities();
     return res.status(result.created ? 201 : 200).json({ data: { article: result.article, created: result.created, capabilities } });
   } catch (error) { return next(error); }
-});
+}
+
+app.post("/api/v1/articles/upload", requireApiToken, handleArticleUpload);
+app.post("/api/v1/ai/articles", requireAiWriteToken, handleArticleUpload);
 
 app.get("/api/v1/articles", requireAdminOrApiToken, async (req, res, next) => {
   try {
@@ -212,6 +220,15 @@ app.post("/api/v1/articles/:id/:action", requireAdminSession, async (req, res, n
 app.get("/api/v1/channels/wechat/capabilities", requireAdminSession, async (_req, res, next) => {
   try { return res.json({ data: await wechatProvider.getCapabilities() }); } catch (error) { return next(error); }
 });
+
+app.get("/api/v1/integrations/ai", requireAdminSession, async (req, res, next) => {
+  const baseUrl = config.PUBLIC_BASE_URL ?? `${req.protocol}://${req.get("host")}`;
+  try { return res.json({ data: { baseUrl, readTokenConfigured: Boolean(config.AI_READ_TOKEN), writeTokenConfigured: Boolean(config.AI_WRITE_TOKEN), tokens: await tokenStore.list(), endpoints: { readList: `${baseUrl}/api/v1/ai/articles`, readDetail: `${baseUrl}/api/v1/ai/articles/:id`, nextBrief: `${baseUrl}/api/v1/ai/content-plan/next`, checkDuplicate: `${baseUrl}/api/v1/ai/articles/check-duplicate`, uploadArticle: `${baseUrl}/api/v1/ai/articles` } } }); } catch (error) { return next(error); }
+});
+
+app.get("/api/v1/admin/tokens", requireAdminSession, async (_req, res, next) => { try { return res.json({ data: await tokenStore.list() }); } catch (error) { return next(error); } });
+app.post("/api/v1/admin/tokens", requireAdminSession, async (req, res, next) => { try { const input = z.object({ name: z.string().trim().min(1).max(120), kind: z.enum(["api", "ai_read", "ai_write"]) as z.ZodType<TokenKind> }).parse(req.body); const created = await tokenStore.create(input.name, input.kind); await repository.recordAudit({ action: "admin.token.create", actorType: "admin", actorId: res.locals.adminUsername }); return res.status(201).json({ data: created }); } catch (error) { return next(error); } });
+app.post("/api/v1/admin/tokens/:id/revoke", requireAdminSession, async (req, res, next) => { try { const revoked = await tokenStore.revoke(String(req.params.id)); if (!revoked) return sendError(res, 404, "NOT_FOUND", "Token 不存在或已撤销"); await repository.recordAudit({ action: "admin.token.revoke", actorType: "admin", actorId: res.locals.adminUsername }); return res.json({ data: { revoked: true } }); } catch (error) { return next(error); } });
 
 app.post("/api/v1/articles/:id/wechat/:action", requireAdminSession, async (req, res, next) => {
   try {

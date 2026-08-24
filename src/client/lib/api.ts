@@ -10,6 +10,9 @@ export interface Article {
 }
 
 export interface Capabilities { draft: boolean; publish: boolean; reason?: string; }
+export interface TokenInfo { id: string; name: string; kind: "api" | "ai_read" | "ai_write"; prefix: string; createdAt: string; revokedAt?: string; }
+export interface CreatedToken { info: TokenInfo; secret: string; }
+export interface AiIntegration { baseUrl: string; readTokenConfigured: boolean; writeTokenConfigured: boolean; tokens: TokenInfo[]; endpoints: Record<string, string>; }
 export interface Strategy { id: string; name: string; goal: string; status: string; contentPillars: string[]; }
 export interface Series { id: string; strategyId: string; sequence: number; name: string; targetCount: number; status: string; }
 export interface Brief { id: string; seriesId: string; sequence: number; titleDirection: string; status: string; mustCover: string[]; mustAvoid: string[]; }
@@ -33,6 +36,9 @@ export const api = {
   archiveArticle: (id: string) => request<{ data: Article }>(`/api/v1/articles/${id}/archive`, { method: "POST" }),
   restoreArticle: (id: string) => request<{ data: Article }>(`/api/v1/articles/${id}/restore`, { method: "POST" }),
   getCapabilities: () => request<{ data: Capabilities }>("/api/v1/channels/wechat/capabilities"),
+  getAiIntegration: () => request<{ data: AiIntegration }>("/api/v1/integrations/ai"),
+  createToken: (name: string, kind: TokenInfo["kind"]) => request<{ data: CreatedToken }>("/api/v1/admin/tokens", { method: "POST", body: JSON.stringify({ name, kind }) }),
+  revokeToken: (id: string) => request<{ data: { revoked: boolean } }>(`/api/v1/admin/tokens/${id}/revoke`, { method: "POST" }),
   createDraft: (id: string) => request<{ data: { id: string; status: string; externalId?: string } }>(`/api/v1/articles/${id}/wechat/draft`, { method: "POST" }),
   publish: (id: string, draftId: string) => request<{ data: { id: string; status: string; externalId?: string } }>(`/api/v1/articles/${id}/wechat/publish`, { method: "POST", body: JSON.stringify({ draftId }) }),
   getOperation: (id: string) => request<{ data: { id: string; status: string; externalId?: string; errorMessage?: string } }>(`/api/v1/operations/${id}`),

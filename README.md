@@ -83,4 +83,6 @@ docker compose exec postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' 
 
 AI 只读接口需要配置 `AI_READ_TOKEN`，只返回微信公众号确认发布的文章，详情默认返回纯文本，接口说明见 [docs/api.md](docs/api.md)。
 
+AI 上传文章使用独立的 `AI_WRITE_TOKEN`；管理员可以在后台“渠道设置”中生成和撤销数据库 Token，Token 明文只显示一次。
+
 内容规划采用“内容战略 → 内容系列 → 文章任务”三级结构，AI 可读取下一个任务和相关历史文章后再生成内容。

@@ -11,6 +11,43 @@ export const articleStatusSchema = z.enum([
 
 export type ArticleStatus = z.infer<typeof articleStatusSchema>;
 
+export const strategyStatusSchema = z.enum(["active", "paused", "archived"]);
+export const briefStatusSchema = z.enum(["planned", "generating", "completed", "skipped"]);
+export type StrategyStatus = z.infer<typeof strategyStatusSchema>;
+export type BriefStatus = z.infer<typeof briefStatusSchema>;
+
+export const contentStrategySchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  goal: z.string().trim().min(1).max(1_000),
+  audience: z.string().trim().max(500).optional(),
+  tone: z.string().trim().max(300).optional(),
+  contentPillars: z.array(z.string().trim().min(1).max(100)).max(30).default([]),
+  avoidTopics: z.array(z.string().trim().min(1).max(100)).max(30).default([]),
+});
+
+export const contentSeriesSchema = z.object({
+  sequence: z.number().int().min(1).max(10_000).default(1),
+  name: z.string().trim().min(1).max(120),
+  pillar: z.string().trim().max(100).optional(),
+  targetCount: z.number().int().min(1).max(200).default(1),
+  orderMode: z.literal("sequential").default("sequential"),
+});
+
+export const contentBriefSchema = z.object({
+  sequence: z.number().int().min(1).max(10_000),
+  titleDirection: z.string().trim().min(1).max(300),
+  coreQuestion: z.string().trim().max(500).optional(),
+  angle: z.string().trim().max(500).optional(),
+  summary: z.string().trim().max(2_000).optional(),
+  mustCover: z.array(z.string().trim().min(1).max(300)).max(50).default([]),
+  mustAvoid: z.array(z.string().trim().min(1).max(300)).max(50).default([]),
+  noveltyRequirement: z.string().trim().max(1_000).optional(),
+});
+
+export type ContentStrategyInput = z.input<typeof contentStrategySchema>;
+export type ContentSeriesInput = z.input<typeof contentSeriesSchema>;
+export type ContentBriefInput = z.input<typeof contentBriefSchema>;
+
 export const uploadArticleSchema = z.object({
   title: z.string().trim().min(1).max(120),
   content: z.string().min(1).max(2_000_000),
@@ -26,6 +63,9 @@ export const uploadArticleSchema = z.object({
   outline: z.array(z.string().trim().min(1).max(300)).max(30).optional(),
   topics: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
   keywords: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
+  strategyId: z.string().uuid().optional(),
+  seriesId: z.string().uuid().optional(),
+  briefId: z.string().uuid().optional(),
 });
 
 export type UploadArticleInput = z.infer<typeof uploadArticleSchema>;
@@ -47,6 +87,9 @@ export interface Article {
   topics: string[];
   keywords: string[];
   contentHash: string;
+  strategyId?: string;
+  seriesId?: string;
+  briefId?: string;
   status: ArticleStatus;
   createdAt: string;
   updatedAt: string;
@@ -55,6 +98,11 @@ export interface Article {
   wechatPublishId?: string;
   publishConfirmed: boolean;
 }
+
+export interface ContentStrategy { id: string; name: string; goal: string; audience?: string; tone?: string; contentPillars: string[]; avoidTopics: string[]; status: StrategyStatus; createdAt: string; updatedAt: string; }
+export interface ContentSeries { id: string; strategyId: string; sequence: number; name: string; pillar?: string; targetCount: number; orderMode: "sequential"; status: StrategyStatus; createdAt: string; updatedAt: string; }
+export interface ContentBrief { id: string; seriesId: string; sequence: number; titleDirection: string; coreQuestion?: string; angle?: string; summary?: string; mustCover: string[]; mustAvoid: string[]; noveltyRequirement?: string; status: BriefStatus; createdAt: string; updatedAt: string; }
+export interface ContentBriefContext { strategy: ContentStrategy; series: ContentSeries; brief: ContentBrief; relatedArticles: Array<Pick<Article, "id" | "title" | "summary" | "digest" | "publishedAt">>; }
 
 export interface ChannelCapabilities {
   provider: "wechat";

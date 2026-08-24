@@ -2,6 +2,8 @@
 
 TypeScript 全栈的文章管理后台，首个渠道适配微信公众号。
 
+前端使用 React + TypeScript + Vite + Tailwind CSS v4，设计 token 统一维护在 `src/client/styles.css` 的 `@theme` 中。
+
 ## 本地启动
 
 ```bash
@@ -80,3 +82,5 @@ docker compose exec postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' 
 微信公众号真实草稿/发布调用需要补充服务端凭证和账号权限；未配置凭证时平台会安全降级为文章保存与管理。
 
 AI 只读接口需要配置 `AI_READ_TOKEN`，只返回微信公众号确认发布的文章，详情默认返回纯文本，接口说明见 [docs/api.md](docs/api.md)。
+
+内容规划采用“内容战略 → 内容系列 → 文章任务”三级结构，AI 可读取下一个任务和相关历史文章后再生成内容。

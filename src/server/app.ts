@@ -9,6 +9,8 @@ import { clearSession, requireAdminSession, setSession } from "./auth";
 import { userStore, userStoreReady, validateNewUser } from "./users";
 import { requireAiReadToken, toAiArticle } from "./ai";
 import { checkDuplicate, type DuplicateInput } from "./dedup";
+import { contentPlanningStore } from "./content-planning";
+import { contentBriefSchema, contentSeriesSchema, contentStrategySchema, briefStatusSchema, strategyStatusSchema } from "../shared/contracts";
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -95,7 +97,14 @@ app.post("/api/v1/articles/upload", requireApiToken, async (req, res, next) => {
   try {
     const parsed = uploadArticleSchema.safeParse(req.body);
     if (!parsed.success) return sendError(res, 400, "VALIDATION_ERROR", "文章字段校验失败", parsed.error.flatten());
-    const result = await repository.createOrGet(parsed.data);
+    let uploadInput = parsed.data;
+    if (uploadInput.briefId) {
+      const context = await contentPlanningStore.getBriefContext(uploadInput.briefId);
+      if (!context) return sendError(res, 404, "BRIEF_NOT_FOUND", "文章任务不存在");
+      if ((uploadInput.seriesId && uploadInput.seriesId !== context.series.id) || (uploadInput.strategyId && uploadInput.strategyId !== context.strategy.id)) return sendError(res, 409, "BRIEF_RELATION_CONFLICT", "文章任务与内容战略/系列不匹配");
+      uploadInput = { ...uploadInput, seriesId: context.series.id, strategyId: context.strategy.id };
+    }
+    const result = await repository.createOrGet(uploadInput);
     await repository.recordAudit({ action: result.created ? "article.upload" : "article.upload.idempotent", actorType: "api", articleId: result.article.id });
     const capabilities = await wechatProvider.getCapabilities();
     return res.status(result.created ? 201 : 200).json({ data: { article: result.article, created: result.created, capabilities } });
@@ -147,6 +156,23 @@ app.get("/api/v1/ai/articles/:id", requireAiReadToken, async (req, res, next) =>
     return res.json({ data: toAiArticle(article, format) });
   } catch (error) { return next(error); }
 });
+
+app.get("/api/v1/ai/content-plan/next", requireAiReadToken, async (_req, res, next) => {
+  try { const context = await contentPlanningStore.getNextContext(); if (!context) return res.json({ data: null }); const related = await repository.listPlanArticles(context.strategy.id, context.series.id, 10); return res.json({ data: { ...context, relatedArticles: related.map((article) => ({ id: article.id, title: article.title, summary: article.summary, digest: article.digest, publishedAt: article.publishedAt })) } }); } catch (error) { return next(error); }
+});
+app.get("/api/v1/ai/content-plan/briefs/:id", requireAiReadToken, async (req, res, next) => {
+  try { const context = await contentPlanningStore.getBriefContext(String(req.params.id)); if (!context || context.brief.status !== "planned" || context.series.status !== "active" || context.strategy.status !== "active") return sendError(res, 404, "NOT_FOUND", "内容任务不存在"); const related = await repository.listPlanArticles(context.strategy.id, context.series.id, 10); return res.json({ data: { ...context, relatedArticles: related.map((article) => ({ id: article.id, title: article.title, summary: article.summary, digest: article.digest, publishedAt: article.publishedAt })) } }); } catch (error) { return next(error); }
+});
+
+app.get("/api/v1/strategies", requireAdminOrApiToken, async (_req, res, next) => { try { return res.json({ data: await contentPlanningStore.listStrategies() }); } catch (error) { return next(error); } });
+app.post("/api/v1/strategies", requireAdminSession, async (req, res, next) => { try { const item = await contentPlanningStore.createStrategy(contentStrategySchema.parse(req.body)); return res.status(201).json({ data: item }); } catch (error) { return next(error); } });
+app.patch("/api/v1/strategies/:id", requireAdminSession, async (req, res, next) => { try { const values = contentStrategySchema.partial().extend({ status: strategyStatusSchema.optional() }).parse(req.body); const item = await contentPlanningStore.updateStrategy(String(req.params.id), values); if (!item) return sendError(res, 404, "NOT_FOUND", "内容战略不存在"); return res.json({ data: item }); } catch (error) { return next(error); } });
+app.get("/api/v1/strategies/:id/series", requireAdminOrApiToken, async (req, res, next) => { try { return res.json({ data: await contentPlanningStore.listSeries(String(req.params.id)) }); } catch (error) { return next(error); } });
+app.post("/api/v1/strategies/:id/series", requireAdminSession, async (req, res, next) => { try { const item = await contentPlanningStore.createSeries(String(req.params.id), contentSeriesSchema.parse(req.body)); return res.status(201).json({ data: item }); } catch (error) { return next(error); } });
+app.patch("/api/v1/series/:id", requireAdminSession, async (req, res, next) => { try { const values = contentSeriesSchema.partial().extend({ status: strategyStatusSchema.optional() }).parse(req.body); const item = await contentPlanningStore.updateSeries(String(req.params.id), values); if (!item) return sendError(res, 404, "NOT_FOUND", "内容系列不存在"); return res.json({ data: item }); } catch (error) { return next(error); } });
+app.get("/api/v1/series/:id/briefs", requireAdminOrApiToken, async (req, res, next) => { try { return res.json({ data: await contentPlanningStore.listBriefs(String(req.params.id)) }); } catch (error) { return next(error); } });
+app.post("/api/v1/series/:id/briefs", requireAdminSession, async (req, res, next) => { try { const item = await contentPlanningStore.createBrief(String(req.params.id), contentBriefSchema.parse(req.body)); return res.status(201).json({ data: item }); } catch (error) { return next(error); } });
+app.patch("/api/v1/briefs/:id", requireAdminSession, async (req, res, next) => { try { const values = contentBriefSchema.partial().extend({ status: briefStatusSchema.optional() }).parse(req.body); const item = await contentPlanningStore.updateBrief(String(req.params.id), values); if (!item) return sendError(res, 404, "NOT_FOUND", "文章任务不存在"); return res.json({ data: item }); } catch (error) { return next(error); } });
 
 app.post("/api/v1/ai/articles/check-duplicate", requireAiReadToken, async (req, res, next) => {
   try {
@@ -261,7 +287,11 @@ app.get("/api/v1/operations/:id", requireAdminOrApiToken, async (req, res, next)
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const requestId = randomUUID();
-  console.error(JSON.stringify({ level: "error", requestId, message: error instanceof Error ? error.message : "unknown error" }));
+  const message = error instanceof Error ? error.message : "unknown error";
+  const databaseCode = typeof error === "object" && error && "code" in error ? String(error.code) : undefined;
+  if (databaseCode === "23503" || message.includes("不存在")) return sendError(res, 404, "NOT_FOUND", message);
+  if (databaseCode === "23505" || message.includes("已存在")) return sendError(res, 409, "CONFLICT", message);
+  console.error(JSON.stringify({ level: "error", requestId, message }));
   return sendError(res, 500, "INTERNAL_ERROR", "服务暂时不可用", { requestId });
 });
 

@@ -23,11 +23,13 @@
     "zod": "latest"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/express": "latest",
     "@types/node": "latest",
     "@types/pg": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "tailwindcss": "^4.3.3",
     "tsx": "latest",
     "typescript": "latest",
     "vite": "latest",

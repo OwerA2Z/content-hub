@@ -1,4 +1,16 @@
-import { boolean, index, jsonb, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgTable, text, timestamp, uuid, varchar, integer, unique } from "drizzle-orm/pg-core";
+
+export const contentStrategies = pgTable("content_strategies", {
+  id: uuid("id").defaultRandom().primaryKey(), name: varchar("name", { length: 120 }).notNull(), goal: text("goal").notNull(), audience: varchar("audience", { length: 500 }), tone: varchar("tone", { length: 300 }), contentPillars: jsonb("content_pillars").$type<string[]>().notNull().default([]), avoidTopics: jsonb("avoid_topics").$type<string[]>().notNull().default([]), status: varchar("status", { length: 20 }).notNull().default("active"), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const contentSeries = pgTable("content_series", {
+  id: uuid("id").defaultRandom().primaryKey(), strategyId: uuid("strategy_id").notNull(), sequence: integer("sequence").notNull().default(1), name: varchar("name", { length: 120 }).notNull(), pillar: varchar("pillar", { length: 100 }), targetCount: integer("target_count").notNull().default(1), orderMode: varchar("order_mode", { length: 30 }).notNull().default("sequential"), status: varchar("status", { length: 20 }).notNull().default("active"), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const contentBriefs = pgTable("content_briefs", {
+  id: uuid("id").defaultRandom().primaryKey(), seriesId: uuid("series_id").notNull(), sequence: integer("sequence").notNull(), titleDirection: varchar("title_direction", { length: 300 }).notNull(), coreQuestion: varchar("core_question", { length: 500 }), angle: varchar("angle", { length: 500 }), summary: text("summary"), mustCover: jsonb("must_cover").$type<string[]>().notNull().default([]), mustAvoid: jsonb("must_avoid").$type<string[]>().notNull().default([]), noveltyRequirement: text("novelty_requirement"), status: varchar("status", { length: 20 }).notNull().default("planned"), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({ seriesSequenceUnique: unique("content_briefs_series_sequence_uq").on(table.seriesId, table.sequence) }));
 
 export const articles = pgTable(
   "articles",
@@ -26,6 +38,9 @@ export const articles = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true }),
     wechatPublishId: text("wechat_publish_id"),
     publishConfirmed: boolean("publish_confirmed").notNull().default(false),
+    strategyId: uuid("strategy_id"),
+    seriesId: uuid("series_id"),
+    briefId: uuid("brief_id"),
   },
   (table) => ({
     sourceExternalIdIdx: index("articles_source_external_id_idx").on(table.source, table.externalId),

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createServer, type Server } from "node:http";
 import { app } from "../src/server/app";
+import { repository } from "../src/server/db/repository";
+import { contentPlanningStore } from "../src/server/content-planning";
 
 let server: Server | undefined;
 
@@ -30,5 +32,19 @@ describe("HTTP API", () => {
     expect(first.data.created).toBe(true);
     expect(second.data.created).toBe(false);
     expect(second.data.article.id).toBe(first.data.article.id);
+  });
+
+  it("上传关联 brief 时自动补齐战略和系列", async () => {
+    const url = await baseUrl();
+    const strategy = await contentPlanningStore.createStrategy({ name: `战略-${Date.now()}`, goal: "目标", contentPillars: [], avoidTopics: [] });
+    const series = await contentPlanningStore.createSeries(strategy.id, { name: "系列", targetCount: 1, orderMode: "sequential" });
+    const brief = await contentPlanningStore.createBrief(series.id, { sequence: 1, titleDirection: "任务" });
+    const response = await fetch(`${url}/api/v1/articles/upload`, { method: "POST", headers: { authorization: "Bearer local-development-api-token", "content-type": "application/json" }, body: JSON.stringify({ title: "关联文章", content: "<p>正文</p>", contentFormat: "html", briefId: brief.id }) });
+    const body = await response.json() as { data: { article: { id: string; strategyId?: string; seriesId?: string; briefId?: string } } };
+    expect(response.status).toBe(201);
+    expect(body.data.article.strategyId).toBe(strategy.id);
+    expect(body.data.article.seriesId).toBe(series.id);
+    expect(body.data.article.briefId).toBe(brief.id);
+    expect((await repository.get(body.data.article.id))?.strategyId).toBe(strategy.id);
   });
 });

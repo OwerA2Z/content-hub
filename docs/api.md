@@ -79,6 +79,31 @@ curl -X POST http://localhost:3000/api/v1/ai/articles/check-duplicate \
 GET /api/v1/articles/:id/similar
 ```
 
+## 内容规划
+
+管理员可以维护“战略 → 系列 → 文章任务”三级内容规划：
+
+```text
+GET  /api/v1/strategies
+POST /api/v1/strategies
+GET  /api/v1/strategies/:id/series
+POST /api/v1/strategies/:id/series
+GET  /api/v1/series/:id/briefs
+POST /api/v1/series/:id/briefs
+PATCH /api/v1/strategies/:id
+PATCH /api/v1/series/:id
+PATCH /api/v1/briefs/:id
+```
+
+AI 使用只读接口获取下一个文章任务：
+
+```text
+GET /api/v1/ai/content-plan/next
+GET /api/v1/ai/content-plan/briefs/:id
+```
+
+返回内容包括战略目标、系列上下文、标题方向、核心问题、必须覆盖、必须避免、创新要求和相关历史文章摘要。生成前仍应调用防重复检测接口。
+
 ## 微信操作
 
 后台登录后执行：

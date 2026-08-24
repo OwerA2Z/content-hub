@@ -52,6 +52,7 @@ export interface ArticleRepository {
   listAiArticles(query: AiArticleQuery): Promise<AiArticlePage>;
   getAiArticle(id: string): Promise<Article | undefined>;
   listDedupCandidates(): Promise<Article[]>;
+  listPlanArticles(strategyId: string, seriesId: string, limit: number): Promise<Article[]>;
 }
 
 export class MemoryRepository implements ArticleRepository {
@@ -150,13 +151,14 @@ export class MemoryRepository implements ArticleRepository {
   }
   async getAiArticle(id: string) { const article = this.articles.get(id); return article?.status === "published" && article.publishConfirmed && !article.archivedAt ? article : undefined; }
   async listDedupCandidates() { return [...this.articles.values()].filter((article) => !article.archivedAt); }
+  async listPlanArticles(strategyId: string, seriesId: string, limit: number) { return [...this.articles.values()].filter((article) => article.strategyId === strategyId && article.seriesId === seriesId && !article.archivedAt).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit); }
 }
 
 type ArticleRow = QueryResultRow & {
   id: string; external_id: string | null; source: string | null; title: string; content: string;
   content_format: "html"; author: string | null; digest: string | null; cover_url: string | null;
   images: string[]; metadata: Record<string, unknown>; summary: string | null; outline: string[]; topics: string[]; keywords: string[]; content_hash: string | null; status: ArticleStatus; created_at: Date; updated_at: Date; archived_at: Date | null;
-  published_at: Date | null; wechat_publish_id: string | null; publish_confirmed: boolean;
+  published_at: Date | null; wechat_publish_id: string | null; publish_confirmed: boolean; strategy_id: string | null; series_id: string | null; brief_id: string | null;
 };
 
 function toArticle(row: ArticleRow): Article {
@@ -164,7 +166,7 @@ function toArticle(row: ArticleRow): Article {
     id: row.id, externalId: row.external_id ?? undefined, source: row.source ?? undefined, title: row.title,
     content: row.content, contentFormat: row.content_format, author: row.author ?? undefined, digest: row.digest ?? undefined, summary: row.summary ?? undefined, outline: row.outline ?? [], topics: row.topics ?? [], keywords: row.keywords ?? [], contentHash: row.content_hash ?? contentHash(row.content),
     coverUrl: row.cover_url ?? undefined, images: row.images ?? [], metadata: row.metadata ?? {}, status: row.status,
-    createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(), archivedAt: row.archived_at?.toISOString(), publishedAt: row.published_at?.toISOString(), wechatPublishId: row.wechat_publish_id ?? undefined, publishConfirmed: row.publish_confirmed ?? false,
+    createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(), archivedAt: row.archived_at?.toISOString(), publishedAt: row.published_at?.toISOString(), wechatPublishId: row.wechat_publish_id ?? undefined, publishConfirmed: row.publish_confirmed ?? false, strategyId: row.strategy_id ?? undefined, seriesId: row.series_id ?? undefined, briefId: row.brief_id ?? undefined,
   };
 }
 
@@ -184,11 +186,11 @@ export class PgRepository implements ArticleRepository {
     await this.ready;
     const id = randomUUID();
     const result = await this.pool.query<ArticleRow>(
-      `INSERT INTO articles (id, external_id, source, title, content, content_format, author, digest, cover_url, images, metadata, summary, outline, topics, keywords, content_hash)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16)
+      `INSERT INTO articles (id, external_id, source, title, content, content_format, author, digest, cover_url, images, metadata, summary, outline, topics, keywords, content_hash, strategy_id, series_id, brief_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17,$18,$19)
        ON CONFLICT (source, external_id) WHERE source IS NOT NULL AND external_id IS NOT NULL DO NOTHING
        RETURNING *`,
-      [id, input.externalId ?? null, input.source ?? null, input.title, input.content, input.contentFormat, input.author ?? null, input.digest ?? null, input.coverUrl ?? null, JSON.stringify(input.images ?? []), JSON.stringify(input.metadata ?? {}), input.summary ?? null, JSON.stringify(input.outline ?? []), JSON.stringify(input.topics ?? []), JSON.stringify(input.keywords ?? []), contentHash(input.content)],
+      [id, input.externalId ?? null, input.source ?? null, input.title, input.content, input.contentFormat, input.author ?? null, input.digest ?? null, input.coverUrl ?? null, JSON.stringify(input.images ?? []), JSON.stringify(input.metadata ?? {}), input.summary ?? null, JSON.stringify(input.outline ?? []), JSON.stringify(input.topics ?? []), JSON.stringify(input.keywords ?? []), contentHash(input.content), input.strategyId ?? null, input.seriesId ?? null, input.briefId ?? null],
     );
     if (result.rows[0]) return { article: toArticle(result.rows[0]), created: true };
     const existing = await this.pool.query<ArticleRow>("SELECT * FROM articles WHERE source = $1 AND external_id = $2 LIMIT 1", [input.source, input.externalId]);
@@ -237,6 +239,7 @@ export class PgRepository implements ArticleRepository {
   }
   async getAiArticle(id: string) { await this.ready; const result = await this.pool.query<ArticleRow>("SELECT * FROM articles WHERE id = $1 AND status = 'published' AND publish_confirmed = true AND archived_at IS NULL", [id]); return result.rows[0] ? toArticle(result.rows[0]) : undefined; }
   async listDedupCandidates() { await this.ready; const result = await this.pool.query<ArticleRow>("SELECT * FROM articles WHERE archived_at IS NULL AND status IN ('uploaded','draft_ready','publish_pending','published') ORDER BY created_at DESC LIMIT 1000"); return result.rows.map(toArticle); }
+  async listPlanArticles(strategyId: string, seriesId: string, limit: number) { await this.ready; const result = await this.pool.query<ArticleRow>("SELECT * FROM articles WHERE strategy_id=$1 AND series_id=$2 AND archived_at IS NULL ORDER BY created_at DESC LIMIT $3", [strategyId, seriesId, limit]); return result.rows.map(toArticle); }
 }
 
 function encodeCursor(article: Article) { return Buffer.from(`${article.publishedAt}|${article.id}`).toString("base64url"); }

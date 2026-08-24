@@ -1,6 +1,6 @@
 # 生产部署指南
 
-本文介绍使用 Docker Compose 部署文章管理平台。生产环境建议准备一台 Linux 主机、一个域名和 HTTPS 证书。
+本文介绍使用 Docker Compose 部署内容中台。生产环境建议准备一台 Linux 主机、一个域名和 HTTPS 证书。
 
 ## 1. 准备主机
 

@@ -87,8 +87,10 @@ docker compose exec postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' 
 
 微信公众号真实草稿/发布调用需要补充服务端凭证和账号权限；未配置凭证时平台会安全降级为文章保存与管理。
 
-AI 只读接口需要配置 `AI_READ_TOKEN`，只返回微信公众号确认发布的文章，详情默认返回纯文本，接口说明见 [docs/api.md](docs/api.md)。
+AI 只读接口使用 API 中心创建的具备 `articles:read`、`planning:read` 和 `dedup:check` 权限的 Token，只返回微信公众号确认发布的文章，详情默认返回纯文本，接口说明见 [docs/api.md](docs/api.md)。
 
-AI 上传文章使用独立的 `AI_WRITE_TOKEN`；管理员可以在后台“API 中心”生成和撤销数据库 Token，Token 明文只显示一次。
+AI 上传文章使用具备 `articles:write` 权限的 Token；管理员可以在后台“API 中心”按权限组合生成和撤销数据库 Token，Token 明文只显示一次。
+
+AI 更新内容规划使用具备 `planning:write` 权限的 Token，只能创建/更新内容系列和文章任务，不能修改战略根节点。
 
 内容规划采用“内容战略 → 内容系列 → 文章任务”三级结构，AI 可读取下一个任务和相关历史文章后再生成内容。

@@ -31,6 +31,7 @@ export const contentSeriesSchema = z.object({
   pillar: z.string().trim().max(100).optional(),
   targetCount: z.number().int().min(1).max(200).default(1),
   orderMode: z.literal("sequential").default("sequential"),
+  externalId: z.string().trim().max(200).optional(),
 });
 
 export const contentBriefSchema = z.object({
@@ -42,6 +43,7 @@ export const contentBriefSchema = z.object({
   mustCover: z.array(z.string().trim().min(1).max(300)).max(50).default([]),
   mustAvoid: z.array(z.string().trim().min(1).max(300)).max(50).default([]),
   noveltyRequirement: z.string().trim().max(1_000).optional(),
+  externalId: z.string().trim().max(200).optional(),
 });
 
 export type ContentStrategyInput = z.input<typeof contentStrategySchema>;
@@ -100,8 +102,8 @@ export interface Article {
 }
 
 export interface ContentStrategy { id: string; name: string; goal: string; audience?: string; tone?: string; contentPillars: string[]; avoidTopics: string[]; status: StrategyStatus; createdAt: string; updatedAt: string; }
-export interface ContentSeries { id: string; strategyId: string; sequence: number; name: string; pillar?: string; targetCount: number; orderMode: "sequential"; status: StrategyStatus; createdAt: string; updatedAt: string; }
-export interface ContentBrief { id: string; seriesId: string; sequence: number; titleDirection: string; coreQuestion?: string; angle?: string; summary?: string; mustCover: string[]; mustAvoid: string[]; noveltyRequirement?: string; status: BriefStatus; createdAt: string; updatedAt: string; }
+export interface ContentSeries { id: string; strategyId: string; sequence: number; name: string; pillar?: string; targetCount: number; orderMode: "sequential"; externalId?: string; status: StrategyStatus; createdAt: string; updatedAt: string; }
+export interface ContentBrief { id: string; seriesId: string; sequence: number; titleDirection: string; coreQuestion?: string; angle?: string; summary?: string; mustCover: string[]; mustAvoid: string[]; noveltyRequirement?: string; externalId?: string; status: BriefStatus; createdAt: string; updatedAt: string; }
 export interface ContentBriefContext { strategy: ContentStrategy; series: ContentSeries; brief: ContentBrief; relatedArticles: Array<Pick<Article, "id" | "title" | "summary" | "digest" | "publishedAt">>; }
 
 export interface ChannelCapabilities {

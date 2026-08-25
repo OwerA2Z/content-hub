@@ -35,11 +35,12 @@ Content-Type: application/json
 
 建议为不同用途创建不同 Token：
 
-| Token 类型 | 用途 | 允许的主要接口 |
+| 权限组合 | 用途 | 允许的主要接口 |
 | --- | --- | --- |
-| `ai_read` | AI 读取和防重复检测 | `/ai/articles`、`/ai/content-plan/*`、`/ai/articles/check-duplicate` |
-| `ai_write` | AI 上传新文章 | `POST /ai/articles` |
-| `api` | 外部内容管道和后台查询 | `/articles/upload`、文章查询和内容规划查询 |
+| `articles:read` + `planning:read` + `dedup:check` | AI 读取和防重复检测 | `/ai/articles`、`/ai/content-plan/*`、`/ai/articles/check-duplicate` |
+| `articles:write` | AI 上传新文章 | `POST /ai/articles` |
+| `planning:write` | AI 创建/更新内容系列和文章任务 | `POST/PATCH /ai/content-plan/*` |
+| 按需组合 | 外部内容管道和后台查询 | `/articles/upload`、文章查询和内容规划查询 |
 
 Token 明文只在创建时返回一次，数据库只保存 hash。生产环境不要把 Token 写入代码仓库、提示词或日志。
 
@@ -49,7 +50,7 @@ Token 明文只在创建时返回一次，数据库只保存 hash。生产环境
 
 ```bash
 curl "$BASE_URL/api/v1/ai/content-plan/next" \
-  -H "Authorization: Bearer $AI_READ_TOKEN"
+  -H "Authorization: Bearer $READ_TOKEN"
 ```
 
 如果没有可用任务，接口返回：
@@ -64,7 +65,7 @@ curl "$BASE_URL/api/v1/ai/content-plan/next" \
 
 ```bash
 curl "$BASE_URL/api/v1/ai/articles?limit=20&source=content-pipeline" \
-  -H "Authorization: Bearer $AI_READ_TOKEN"
+  -H "Authorization: Bearer $READ_TOKEN"
 ```
 
 列表接口只返回：
@@ -92,7 +93,7 @@ curl "$BASE_URL/api/v1/ai/articles?limit=20&source=content-pipeline" \
 
 ```bash
 curl -X POST "$BASE_URL/api/v1/ai/articles/check-duplicate" \
-  -H "Authorization: Bearer $AI_READ_TOKEN" \
+  -H "Authorization: Bearer $READ_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "候选文章标题",
@@ -139,11 +140,58 @@ curl -X POST "$BASE_URL/api/v1/ai/articles/check-duplicate" \
 
 该接口是建议性检查，不会自动阻断上传。AI 应自行决定是否接受警告。
 
-### 第五步：上传新文章
+### 第五步：更新内容规划（可选）
+
+AI 规划写入必须使用包含 `planning:write` 的 Token。Token 权限可以同时组合 `planning:read` 或 `dedup:check`，但不应授予无关权限。
+
+创建系列和文章任务时必须提供幂等请求头：
+
+```http
+Idempotency-Key: my-agent-series-20260825-001
+```
+
+创建内容系列：
+
+```bash
+curl -X POST "$BASE_URL/api/v1/ai/content-plan/strategies/$STRATEGY_ID/series" \
+  -H "Authorization: Bearer $PLAN_TOKEN" \
+  -H "Idempotency-Key: my-agent-series-20260825-001" \
+  -H "Content-Type: application/json" \
+  -d '{"sequence": 2,"name":"AI 工作流实践","targetCount": 8,"orderMode":"sequential"}'
+```
+
+创建文章任务：
+
+```bash
+curl -X POST "$BASE_URL/api/v1/ai/content-plan/series/$SERIES_ID/briefs" \
+  -H "Authorization: Bearer $PLAN_TOKEN" \
+  -H "Idempotency-Key: my-agent-brief-20260825-001" \
+  -H "Content-Type: application/json" \
+  -d '{"sequence": 1,"titleDirection":"如何把 AI 接入日常工作流","coreQuestion":"普通团队如何低成本开始使用 AI？","mustCover":["真实案例","落地步骤"],"mustAvoid":["空泛口号"],"noveltyRequirement":"加入一个尚未使用过的实践角度"}'
+```
+
+更新文章任务：
+
+```bash
+curl -X PATCH "$BASE_URL/api/v1/ai/content-plan/briefs/$BRIEF_ID" \
+  -H "Authorization: Bearer $PLAN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"summary":"补充团队落地时的角色分工和验收方式","angle":"从一次小规模试点切入"}'
+```
+
+AI 规划写入的限制：
+
+- 不能创建或修改内容战略根节点。
+- 不能删除、归档或直接发布内容规划。
+- 创建请求重复使用相同 `Idempotency-Key` 时，会返回同一系列或文章任务。
+- 文章任务的战略、系列关系由服务端校验。
+- 所有写入都会记录 AI 审计事件。
+
+### 第六步：上传新文章
 
 ```bash
 curl -X POST "$BASE_URL/api/v1/ai/articles" \
-  -H "Authorization: Bearer $AI_WRITE_TOKEN" \
+  -H "Authorization: Bearer $WRITE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "AI 生成的新文章",
@@ -222,6 +270,7 @@ AI 只读接口只返回微信公众号确认发布且未归档的文章，这�
 AI 客户端至少应处理：
 
 - `401`：Token 缺失、错误或未配置。
+- `IDEMPOTENCY_KEY_REQUIRED`：AI 规划写入缺少 `Idempotency-Key`，或请求头长度不符合要求。
 - `400`：请求字段校验失败，应根据 `message/details` 修正请求。
 - `404`：文章、内容任务或资源不存在。
 - `409`：幂等冲突、规划关系冲突或业务状态冲突。
@@ -230,7 +279,7 @@ AI 客户端至少应处理：
 
 ## 7. 安全建议
 
-- `ai_read` 和 `ai_write` 使用不同 Token。
+- 读取、写入和规划权限按最小 scope 原则组合，避免给同一个 Token 授予无关权限。
 - Token 放在服务端密钥管理系统或运行时环境变量中。
 - 不要把完整 Token 写入文章 metadata、日志或模型上下文。
 - 上传前先执行防重复检测，生成后再次检查正文。

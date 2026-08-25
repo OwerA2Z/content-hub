@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { repository } from "../db/repository";
 import { wechatProvider } from "../channels/wechat";
-import { requireAdminOrApiToken } from "../http/middleware";
+import { requireAdminOrScopes } from "../http/middleware";
 import { requireAdminSession } from "../auth";
 import { sendError } from "../http/errors";
 import { processChannelOperation } from "../services/channel-operations";
@@ -16,7 +16,10 @@ export function createChannelsRouter() {
   router.post("/articles/:id/wechat/retry", requireAdminSession, async (req, res, next) => {
     try { const articleId = String(req.params.id); const article = await repository.get(articleId); if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在"); const failed = await repository.getLatestFailedOperation(articleId); if (!failed) return sendError(res, 409, "NO_FAILED_OPERATION", "没有可重试的微信操作"); const operation = await repository.createOperation(articleId, failed.action); void processChannelOperation(operation.id, articleId, failed.action, failed.externalId); return res.status(202).json({ data: operation }); } catch (error) { return next(error); }
   });
-  router.post("/articles/:id/wechat/:action", requireAdminSession, async (req, res, next) => {
+  router.post("/articles/:id/wechat/:action", async (req, res, next) => {
+    const requiredScope = String(req.params.action) === "draft" ? ["wechat:draft"] as const : ["wechat:publish"] as const;
+    return requireAdminOrScopes(requiredScope)(req, res, next);
+  }, async (req, res, next) => {
     try {
       const action = z.enum(["draft", "publish"]).parse(String(req.params.action));
       const draftId = z.object({ draftId: z.string().trim().min(1).optional() }).parse(req.body ?? {}).draftId;
@@ -25,12 +28,12 @@ export function createChannelsRouter() {
       const capabilities = await wechatProvider.getCapabilities();
       if ((action === "draft" && !capabilities.draft) || (action === "publish" && !capabilities.publish)) return sendError(res, 403, "CHANNEL_CAPABILITY_UNAVAILABLE", capabilities.reason ?? "当前公众号不支持此操作");
       const operation = await repository.createOperation(article.id, action);
-      await repository.recordAudit({ action: `wechat.${action}`, actorType: "admin", actorId: res.locals.adminUsername, articleId: article.id, operationId: operation.id });
+      await repository.recordAudit({ action: `wechat.${action}`, actorType: res.locals.authActorType ?? "admin", actorId: res.locals.adminUsername, articleId: article.id, operationId: operation.id });
       void processChannelOperation(operation.id, article.id, action, draftId);
       return res.status(202).json({ data: operation });
     } catch (error) { return next(error); }
   });
-  router.get("/operations/:id", requireAdminOrApiToken, async (req, res, next) => {
+  router.get("/operations/:id", requireAdminOrScopes(["operations:read"]), async (req, res, next) => {
     try { const operation = await repository.getOperation(String(req.params.id)); if (!operation) return sendError(res, 404, "NOT_FOUND", "操作不存在"); return res.json({ data: operation }); } catch (error) { return next(error); }
   });
   return router;

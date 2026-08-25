@@ -33,8 +33,7 @@ POSTGRES_PASSWORD=随机数据库密码
 DATABASE_URL=postgresql://article_user:随机数据库密码@postgres:5432/article_platform
 API_TOKEN=随机的外部上传令牌
 SESSION_SECRET=随机的会话签名密钥
-AI_READ_TOKEN=随机的AI只读令牌
-AI_WRITE_TOKEN=随机的AI写入令牌
+API_TOKEN_SCOPES=articles:read,articles:write,planning:read,dedup:check,operations:read
 ```
 
 如果要接入微信公众号，再配置：
@@ -120,9 +119,9 @@ curl -X POST https://content.example.com/api/v1/articles/upload \
   }'
 ```
 
-AI 系统使用独立的 `AI_READ_TOKEN`，只能读取已由微信公众号确认发布的文章，不能上传、修改、归档或发布。
+AI 系统使用 API 中心创建的 scope Token。读取文章需要 `articles:read`，读取规划需要 `planning:read`，防重复检测需要 `dedup:check`。
 
-AI 上传新文章使用 `AI_WRITE_TOKEN`，管理员也可以在后台 API 中心生成数据库 Token。Token 明文只显示一次。
+AI 上传新文章需要 `articles:write`，管理员可以在后台 API 中心生成数据库 Token。Token 明文只显示一次。
 
 ## 6. 管理员密码恢复
 
@@ -211,7 +210,7 @@ docker compose down -v
 - [ ] `/ready` 返回 PostgreSQL ready
 - [ ] 首次管理员已初始化
 - [ ] 外部上传 API Token 可用
-- [ ] AI_READ_TOKEN 与 API_TOKEN 不同
+- [ ] AI 使用的 Token 权限符合最小权限原则
 - [ ] 已完成一次数据库备份和恢复演练
 - [ ] 微信权限、草稿和发布状态已实际验证
 - [ ] 已配置日志保留和主机磁盘监控

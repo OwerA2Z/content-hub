@@ -93,7 +93,7 @@ API 中心用于给外部系统和 AI 管理访问凭证：
 
 - 查看 API Base URL。
 - 查看 AI 读取、AI 写入和外部 API 接口目录。
-- 创建 `ai_read`、`ai_write` 或 `api` Token。
+- 按 scope 创建 Token，例如 `articles:read`、`articles:write`、`planning:read`、`planning:write`。
 - 查看 Token 名称、类型和前缀。
 - 撤销不再使用的 Token。
 

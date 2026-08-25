@@ -37,11 +37,11 @@ GET /api/v1/operations/:id
 
 ## AI 只读查询
 
-配置 `AI_READ_TOKEN` 后，AI 系统只能读取已由微信公众号确认发布的文章：
+使用具备 `articles:read` 权限的 Token 后，AI 系统只能读取已由微信公众号确认发布的文章：
 
 ```bash
 curl 'http://localhost:3000/api/v1/ai/articles?limit=20&source=content-pipeline' \
-  -H 'Authorization: Bearer <AI_READ_TOKEN>'
+  -H 'Authorization: Bearer <TOKEN_WITH_articles:read>'
 ```
 
 详情默认返回纯文本；需要排版时使用 `?format=html`：
@@ -51,13 +51,13 @@ GET /api/v1/ai/articles/:id
 GET /api/v1/ai/articles/:id?format=html
 ```
 
-AI Token 没有上传、修改、归档、恢复或发布权限。只有微信公众号确认发布成功的文章才会出现在结果中。
+只有具备相应 scope 的 Token 才能上传或修改内容；读取 Token 默认没有写入、归档、恢复或发布权限。只有微信公众号确认发布成功的文章才会出现在结果中。
 
 AI 上传新文章使用独立写入 Token：
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/ai/articles \
-  -H 'Authorization: Bearer <AI_WRITE_TOKEN>' \
+  -H 'Authorization: Bearer <TOKEN_WITH_articles:write>' \
   -H 'Content-Type: application/json' \
   -d '{"title":"AI 新文章","content":"<p>正文</p>","contentFormat":"html"}'
 ```
@@ -68,7 +68,7 @@ curl -X POST http://localhost:3000/api/v1/ai/articles \
 
 ```bash
 curl -X POST http://localhost:3000/api/v1/ai/articles/check-duplicate \
-  -H 'Authorization: Bearer <AI_READ_TOKEN>' \
+  -H 'Authorization: Bearer <TOKEN_WITH_dedup:check>' \
   -H 'Content-Type: application/json' \
   -d '{
     "title": "候选文章标题",
@@ -111,6 +111,16 @@ GET /api/v1/ai/content-plan/next
 GET /api/v1/ai/content-plan/briefs/:id
 ```
 
+AI 使用具备 `planning:write` 权限的 Token 创建或更新内容规划：
+
+```text
+POST  /api/v1/ai/content-plan/strategies/:id/series
+POST  /api/v1/ai/content-plan/series/:id/briefs
+PATCH /api/v1/ai/content-plan/briefs/:id
+```
+
+两个 POST 接口必须携带 `Idempotency-Key` 请求头，重复请求会返回同一资源。AI 不能修改战略根节点，也不能删除或发布内容规划。
+
 管理员 Token 管理接口：
 
 ```text
@@ -119,7 +129,7 @@ POST /api/v1/admin/tokens
 POST /api/v1/admin/tokens/:id/revoke
 ```
 
-创建 Token 时提交 `{ "name": "AI读取", "kind": "ai_read" }`。Token 明文只在创建响应中返回一次，数据库只保存 hash。
+创建 Token 时提交 `{ "name": "AI助手", "scopes": ["articles:read", "planning:read", "dedup:check"] }`。Token 明文只在创建响应中返回一次，数据库只保存 hash。
 
 返回内容包括战略目标、系列上下文、标题方向、核心问题、必须覆盖、必须避免、创新要求和相关历史文章摘要。生成前仍应调用防重复检测接口。
 

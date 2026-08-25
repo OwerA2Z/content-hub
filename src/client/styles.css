@@ -1,17 +1,61 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
-@theme {
+@theme inline {
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --color-ink: #18221f;
   --color-page: #f5f7f2;
   --color-brand: #b7e36f;
   --color-brand-deep: #13221e;
   --color-border-soft: #e5ebe1;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+}
+
+:root {
+  --background: oklch(0.985 0.004 250);
+  --foreground: oklch(0.21 0.03 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.03 260);
+  --primary: oklch(0.28 0.08 160);
+  --primary-foreground: oklch(0.98 0.01 150);
+  --secondary: oklch(0.95 0.02 150);
+  --secondary-foreground: oklch(0.28 0.08 160);
+  --muted: oklch(0.95 0.01 250);
+  --muted-foreground: oklch(0.52 0.03 250);
+  --accent: oklch(0.94 0.03 150);
+  --accent-foreground: oklch(0.25 0.07 160);
+  --destructive: oklch(0.58 0.22 25);
+  --border: oklch(0.9 0.02 150);
+  --input: oklch(0.9 0.02 150);
+  --ring: oklch(0.55 0.12 150);
+  --sidebar: oklch(0.18 0.04 160);
+  --sidebar-foreground: oklch(0.93 0.03 150);
+  --sidebar-accent: oklch(0.27 0.06 160);
+  --sidebar-accent-foreground: oklch(0.98 0.01 150);
 }
 
 @layer base {
   :root { font-synthesis: none; }
   * { box-sizing: border-box; }
-  body { @apply m-0 min-w-[320px] bg-page font-sans text-ink; }
+  body { @apply m-0 min-w-[320px] bg-background font-sans text-foreground; }
   button, a { font: inherit; }
 }

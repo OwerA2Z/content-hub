@@ -4,6 +4,7 @@ import { app } from "../src/server/app";
 import { repository } from "../src/server/db/repository";
 import { contentPlanningStore } from "../src/server/content-planning";
 import { createChannelsRouter } from "../src/server/routes/channels";
+import { tokenStore } from "../src/server/tokens";
 
 let server: Server | undefined;
 
@@ -53,5 +54,20 @@ describe("HTTP API", () => {
     expect(body.data.article.seriesId).toBe(series.id);
     expect(body.data.article.briefId).toBe(brief.id);
     expect((await repository.get(body.data.article.id))?.strategyId).toBe(strategy.id);
+  });
+
+  it("AI 规划写入使用独立 Token，并按 Idempotency-Key 幂等创建", async () => {
+    const url = await baseUrl();
+    const strategy = await contentPlanningStore.createStrategy({ name: `AI战略-${Date.now()}`, goal: "AI 规划测试", contentPillars: [], avoidTopics: [] });
+    const token = await tokenStore.create(`测试规划-${Date.now()}`, ["planning:write"]);
+    const headers = { authorization: `Bearer ${token.secret}`, "content-type": "application/json", "idempotency-key": `series-${Date.now()}` };
+    const input = { sequence: 1, name: "AI 系列", targetCount: 2, orderMode: "sequential" };
+    const first = await fetch(`${url}/api/v1/ai/content-plan/strategies/${strategy.id}/series`, { method: "POST", headers, body: JSON.stringify(input) });
+    const firstBody = await first.json() as { data: { id: string } };
+    const second = await fetch(`${url}/api/v1/ai/content-plan/strategies/${strategy.id}/series`, { method: "POST", headers, body: JSON.stringify({ ...input, name: "重试不应覆盖" }) });
+    const secondBody = await second.json() as { data: { id: string } };
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(secondBody.data.id).toBe(firstBody.data.id);
   });
 });

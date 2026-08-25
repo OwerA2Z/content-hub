@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { app } from "../src/server/app";
 import { repository } from "../src/server/db/repository";
 import { contentPlanningStore } from "../src/server/content-planning";
+import { createChannelsRouter } from "../src/server/routes/channels";
 
 let server: Server | undefined;
 
@@ -17,6 +18,12 @@ async function baseUrl() {
 }
 
 describe("HTTP API", () => {
+  it("微信公众号重试路由优先于通用 action 路由", () => {
+    const stack = (createChannelsRouter() as unknown as { stack: Array<{ route?: { path: string } }> }).stack;
+    const paths = stack.flatMap((layer) => layer.route?.path ? [layer.route.path] : []);
+    expect(paths.indexOf("/articles/:id/wechat/retry")).toBeLessThan(paths.indexOf("/articles/:id/wechat/:action"));
+  });
+
   it("健康检查公开，上传接口需要 Bearer Token", async () => {
     const url = await baseUrl();
     expect((await fetch(`${url}/health`)).status).toBe(200);

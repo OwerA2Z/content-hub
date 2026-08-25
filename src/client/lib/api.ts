@@ -1,52 +1,27 @@
-export interface Article {
-  id: string;
-  title: string;
-  digest?: string;
-  author?: string;
-  status: string;
-  createdAt: string;
-  content: string;
-  coverUrl?: string;
-}
+/** 兼容旧调用方的领域 API 门面；新页面优先直接依赖对应领域模块。 */
+import { authApi } from "./api/auth";
+import { articleApi } from "./api/articles";
+import { integrationApi } from "./api/integrations";
+import { adminTokenApi } from "./api/admin-tokens";
+import { planningApi } from "./api/planning";
 
-export interface Capabilities { draft: boolean; publish: boolean; reason?: string; }
-export interface TokenInfo { id: string; name: string; kind: "api" | "ai_read" | "ai_write"; prefix: string; createdAt: string; revokedAt?: string; }
-export interface CreatedToken { info: TokenInfo; secret: string; }
-export interface AiIntegration { baseUrl: string; readTokenConfigured: boolean; writeTokenConfigured: boolean; tokens: TokenInfo[]; endpoints: Record<string, string>; }
-export interface Strategy { id: string; name: string; goal: string; status: string; contentPillars: string[]; }
-export interface Series { id: string; strategyId: string; sequence: number; name: string; targetCount: number; status: string; }
-export interface Brief { id: string; seriesId: string; sequence: number; titleDirection: string; status: string; mustCover: string[]; mustAvoid: string[]; }
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...init, credentials: "include", headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error?.message ?? "请求失败");
-  return body;
-}
+export * from "./api/types";
 
 export const api = {
-  setupStatus: () => request<{ data: { required: boolean } }>("/api/v1/setup/status"),
-  initialize: (username: string, password: string) => request<{ data: { username: string } }>("/api/v1/setup/initialize", { method: "POST", body: JSON.stringify({ username, password }) }),
-  login: (username: string, password: string) => request<{ data: { username: string } }>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
-  logout: () => request<{ data: { ok: boolean } }>("/api/v1/auth/logout", { method: "POST" }),
-  resetPassword: (username: string, recoveryCode: string, password: string) => request<{ data: { username: string } }>("/api/v1/auth/reset-password", { method: "POST", body: JSON.stringify({ username, recoveryCode, password }) }),
-  me: () => request<{ data: { username: string } }>("/api/v1/auth/me"),
-  listArticles: (params = "") => request<{ data: Article[]; meta: { total: number } }>(`/api/v1/articles${params}`),
-  getArticle: (id: string) => request<{ data: Article }>(`/api/v1/articles/${id}`),
-  archiveArticle: (id: string) => request<{ data: Article }>(`/api/v1/articles/${id}/archive`, { method: "POST" }),
-  restoreArticle: (id: string) => request<{ data: Article }>(`/api/v1/articles/${id}/restore`, { method: "POST" }),
-  getCapabilities: () => request<{ data: Capabilities }>("/api/v1/channels/wechat/capabilities"),
-  getAiIntegration: () => request<{ data: AiIntegration }>("/api/v1/integrations/ai"),
-  createToken: (name: string, kind: TokenInfo["kind"]) => request<{ data: CreatedToken }>("/api/v1/admin/tokens", { method: "POST", body: JSON.stringify({ name, kind }) }),
-  revokeToken: (id: string) => request<{ data: { revoked: boolean } }>(`/api/v1/admin/tokens/${id}/revoke`, { method: "POST" }),
-  createDraft: (id: string) => request<{ data: { id: string; status: string; externalId?: string } }>(`/api/v1/articles/${id}/wechat/draft`, { method: "POST" }),
-  publish: (id: string, draftId: string) => request<{ data: { id: string; status: string; externalId?: string } }>(`/api/v1/articles/${id}/wechat/publish`, { method: "POST", body: JSON.stringify({ draftId }) }),
-  getOperation: (id: string) => request<{ data: { id: string; status: string; externalId?: string; errorMessage?: string } }>(`/api/v1/operations/${id}`),
-  retry: (id: string) => request<{ data: { id: string; status: string } }>(`/api/v1/articles/${id}/wechat/retry`, { method: "POST" }),
-  listStrategies: () => request<{ data: Strategy[] }>("/api/v1/strategies"),
-  createStrategy: (input: object) => request<{ data: Strategy }>("/api/v1/strategies", { method: "POST", body: JSON.stringify(input) }),
-  listSeries: (strategyId: string) => request<{ data: Series[] }>(`/api/v1/strategies/${strategyId}/series`),
-  createSeries: (strategyId: string, input: object) => request<{ data: Series }>(`/api/v1/strategies/${strategyId}/series`, { method: "POST", body: JSON.stringify(input) }),
-  listBriefs: (seriesId: string) => request<{ data: Brief[] }>(`/api/v1/series/${seriesId}/briefs`),
-  createBrief: (seriesId: string, input: object) => request<{ data: Brief }>(`/api/v1/series/${seriesId}/briefs`, { method: "POST", body: JSON.stringify(input) }),
+  ...authApi,
+  listArticles: articleApi.list,
+  getArticle: articleApi.get,
+  archiveArticle: articleApi.archive,
+  restoreArticle: articleApi.restore,
+  getCapabilities: articleApi.capabilities,
+  createDraft: articleApi.createDraft,
+  publish: articleApi.publish,
+  getOperation: articleApi.getOperation,
+  retry: articleApi.retry,
+  getAiIntegration: integrationApi.getAi,
+  createToken: adminTokenApi.create,
+  revokeToken: adminTokenApi.revoke,
+  ...planningApi,
 };
+
+export { authApi, articleApi, integrationApi, planningApi };

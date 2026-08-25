@@ -122,7 +122,7 @@ curl -X POST https://content.example.com/api/v1/articles/upload \
 
 AI 系统使用独立的 `AI_READ_TOKEN`，只能读取已由微信公众号确认发布的文章，不能上传、修改、归档或发布。
 
-AI 上传新文章使用 `AI_WRITE_TOKEN`，管理员也可以在后台渠道设置中生成数据库 Token。Token 明文只显示一次。
+AI 上传新文章使用 `AI_WRITE_TOKEN`，管理员也可以在后台 API 中心生成数据库 Token。Token 明文只显示一次。
 
 ## 6. 管理员密码恢复
 

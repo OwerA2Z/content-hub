@@ -21,7 +21,8 @@
   "children": [
     "08-22-ai-readable-articles",
     "08-24-article-content-dedup",
-    "08-24-content-planning"
+    "08-24-content-planning",
+    "08-25-tailadmin-ui-refresh"
   ],
   "parent": null,
   "relatedFiles": [],

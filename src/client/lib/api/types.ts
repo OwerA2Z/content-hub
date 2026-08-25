@@ -1,5 +1,6 @@
 export { TOKEN_SCOPES, TOKEN_SCOPE_LABELS } from "../../../shared/scopes";
 export type { TokenScope } from "../../../shared/scopes";
+export type { CandidatePool, ContentCandidate } from "../../../shared/candidate-pools";
 
 export interface Article {
   id: string;

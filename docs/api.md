@@ -121,6 +121,17 @@ PATCH /api/v1/ai/content-plan/briefs/:id
 
 两个 POST 接口必须携带 `Idempotency-Key` 请求头，重复请求会返回同一资源。AI 不能修改战略根节点，也不能删除或发布内容规划。
 
+每日候选池接口：
+
+```text
+POST /api/v1/ai/candidate-pools/daily/candidates
+POST /api/v1/ai/candidate-pools/daily/recheck
+GET  /api/v1/candidate-pools/daily
+POST /api/v1/candidate-pools/daily/candidates/:id/accept
+```
+
+提交候选需要 `recommendations:write`，读取候选池需要 `recommendations:read`，接受候选并保存为文章需要 `recommendations:accept`。发布成功后系统会异步重新评估当天剩余候选。
+
 管理员 Token 管理接口：
 
 ```text

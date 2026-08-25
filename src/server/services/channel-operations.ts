@@ -1,5 +1,6 @@
 import { repository } from "../db/repository";
 import { wechatProvider } from "../channels/wechat";
+import { candidatePoolStore } from "../candidate-pools";
 
 /** 执行微信公众号草稿/发布任务，并在失败时统一回写文章和操作状态。 */
 export async function processChannelOperation(operationId: string, articleId: string, action: "draft" | "publish", draftId?: string) {
@@ -24,6 +25,8 @@ export async function processChannelOperation(operationId: string, articleId: st
     if (publishStatus !== "succeeded") throw new Error(publishStatus === "failed" ? "微信公众号发布失败" : "微信公众号发布状态确认超时");
     await repository.confirmPublish(articleId, result.externalId, new Date().toISOString());
     await repository.completeOperation(operationId, "succeeded", { externalId: result.externalId });
+    // 发布成功后异步重评估当天候选，避免候选池阻塞微信公众号发布响应。
+    void candidatePoolStore.recheck().catch(() => undefined);
   } catch (error) {
     await repository.completeOperation(operationId, "failed", { errorMessage: error instanceof Error ? error.message : "渠道操作失败" });
     await repository.updateStatus(articleId, "sync_failed");

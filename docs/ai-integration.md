@@ -40,6 +40,8 @@ Content-Type: application/json
 | `articles:read` + `planning:read` + `dedup:check` | AI 读取和防重复检测 | `/ai/articles`、`/ai/content-plan/*`、`/ai/articles/check-duplicate` |
 | `articles:write` | AI 上传新文章 | `POST /ai/articles` |
 | `planning:write` | AI 创建/更新内容系列和文章任务 | `POST/PATCH /ai/content-plan/*` |
+| `recommendations:write` | AI 提交候选文章并触发重评估 | `POST /ai/candidate-pools/daily/*` |
+| `recommendations:read` | 读取每日候选池和推荐排序 | `GET /candidate-pools/daily` |
 | 按需组合 | 外部内容管道和后台查询 | `/articles/upload`、文章查询和内容规划查询 |
 
 Token 明文只在创建时返回一次，数据库只保存 hash。生产环境不要把 Token 写入代码仓库、提示词或日志。
@@ -248,7 +250,50 @@ AI 上传成功后，文章通常处于 `uploaded` 状态。它不会立即出�
 
 AI 只读接口只返回微信公众号确认发布且未归档的文章，这是为了避免 AI 把草稿或未审核内容当成既有事实。
 
-## 6. 错误处理
+## 6. 每日候选池
+
+AI 可以每天一次性提交 1-10 篇候选文章，平台会把候选保存到当天的候选池，并与以下内容比较：
+
+- 已发布文章
+- 已保存但未发布的文章
+- 微信草稿和待发布文章
+- 当天候选池中的其他候选
+
+提交候选：
+
+```bash
+curl -X POST "$BASE_URL/api/v1/ai/candidate-pools/daily/candidates" \
+  -H "Authorization: Bearer $RECOMMENDATION_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "candidates": [
+      {
+        "externalId": "agent-20260825-candidate-001",
+        "title": "候选文章标题",
+        "content": "<p>候选正文</p>",
+        "contentFormat": "html",
+        "summary": "候选文章梗概",
+        "outline": ["背景", "观点", "案例", "结论"],
+        "topics": ["内容运营"],
+        "keywords": ["AI"]
+      }
+    ]
+  }'
+```
+
+候选池会返回每篇候选的：
+
+- `score`：综合推荐分数
+- `similarity`：与已有文章和同池候选的最高相似度
+- `risk`：`low`、`medium`、`high` 或 `exact`
+- `warnings`：详细的重合和内容完整性提醒
+- `status`：`candidate`、`recommended`、`stale`、`accepted`
+
+每天默认推荐分数最高的 3 篇。发布其中一篇后，系统会异步重新评估当天剩余候选，高度重合的候选会降权或标记为 `stale`。
+
+后台管理员可以在“AI 推荐”页面查看候选池，并点击“接受并保存文章”。保存后再从文章管理页面创建微信草稿或提交发布。
+
+## 7. 错误处理
 
 成功响应格式：
 
@@ -277,7 +322,7 @@ AI 客户端至少应处理：
 - `429`：请求过于频繁，使用退避重试。
 - `500/503`：服务或数据库暂时不可用，保留任务并稍后重试。
 
-## 7. 安全建议
+## 8. 安全建议
 
 - 读取、写入和规划权限按最小 scope 原则组合，避免给同一个 Token 授予无关权限。
 - Token 放在服务端密钥管理系统或运行时环境变量中。

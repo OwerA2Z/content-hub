@@ -10,6 +10,7 @@ import { createChannelsRouter } from "./routes/channels";
 import { createIntegrationsRouter } from "./routes/integrations";
 import { createAdminTokensRouter } from "./routes/admin-tokens";
 import { createPlanningRouter } from "./routes/planning";
+import { createCandidatesRouter } from "./routes/candidates";
 import { errorHandler } from "./http/errors";
 
 const app = express();
@@ -34,6 +35,7 @@ app.use("/api/v1", createAuthRouter());
 app.use("/api/v1", createArticlesRouter());
 app.use("/api/v1", createAiRouter());
 app.use("/api/v1", createPlanningRouter());
+app.use("/api/v1", createCandidatesRouter());
 app.use("/api/v1", createIntegrationsRouter());
 app.use("/api/v1", createAdminTokensRouter());
 app.use("/api/v1", createChannelsRouter());

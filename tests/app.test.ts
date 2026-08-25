@@ -5,6 +5,7 @@ import { repository } from "../src/server/db/repository";
 import { contentPlanningStore } from "../src/server/content-planning";
 import { createChannelsRouter } from "../src/server/routes/channels";
 import { tokenStore } from "../src/server/tokens";
+import { candidatePoolStore } from "../src/server/candidate-pools";
 
 let server: Server | undefined;
 
@@ -69,5 +70,20 @@ describe("HTTP API", () => {
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
     expect(secondBody.data.id).toBe(firstBody.data.id);
+  });
+
+  it("每日候选池支持提交、推荐和接受候选文章", async () => {
+    const url = await baseUrl();
+    const token = await tokenStore.create(`候选池-${Date.now()}`, ["recommendations:write", "recommendations:read", "recommendations:accept"]);
+    const headers = { authorization: `Bearer ${token.secret}`, "content-type": "application/json" };
+    const response = await fetch(`${url}/api/v1/ai/candidate-pools/daily/candidates`, { method: "POST", headers, body: JSON.stringify({ candidates: [{ externalId: `candidate-${Date.now()}`, title: "候选文章", content: "<p>候选正文</p>", contentFormat: "html", summary: "候选梗概", outline: ["背景", "结论"], topics: ["AI"], keywords: ["内容"] }] }) });
+    const body = await response.json() as { data: { candidates: Array<{ id: string; status: string }> } };
+    expect(response.status).toBe(201);
+    expect(body.data.candidates[0]?.status).toMatch(/candidate|recommended/);
+    const pool = await candidatePoolStore.getDaily();
+    const candidate = pool.candidates.find((item) => item.id === body.data.candidates[0]?.id);
+    expect(candidate).toBeTruthy();
+    const accepted = await fetch(`${url}/api/v1/candidate-pools/daily/candidates/${candidate!.id}/accept`, { method: "POST", headers });
+    expect(accepted.status).toBe(201);
   });
 });

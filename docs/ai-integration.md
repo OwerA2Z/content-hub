@@ -24,7 +24,7 @@ AI 与内容中台建议采用以下闭环：
 
 ## 2. Base URL 与 Token
 
-在后台“API 中心”获取 API Base URL 和 Token。所有接口都使用 `/api/v1` 前缀。
+在后台“API 中心”获取 API Base URL，在“Token 管理”中创建带所需 Scope 的 Token。所有接口都使用 `/api/v1` 前缀。
 
 请求统一使用：
 

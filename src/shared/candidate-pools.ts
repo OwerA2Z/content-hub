@@ -18,6 +18,7 @@ export const candidateInputSchema = z.object({
   topics: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
   keywords: z.array(z.string().trim().min(1).max(100)).max(50).optional(),
   coverUrl: z.string().url().max(2_000).optional(),
+  coverAssetId: z.string().uuid().optional(),
   source: z.string().trim().max(100).optional(),
   strategyId: z.string().uuid().optional(),
   seriesId: z.string().uuid().optional(),

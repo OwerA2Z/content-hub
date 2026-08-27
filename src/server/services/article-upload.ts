@@ -2,6 +2,7 @@ import { repository } from "../db/repository";
 import { wechatProvider } from "../channels/wechat";
 import { contentPlanningStore } from "../content-planning";
 import { uploadArticleSchema } from "../../shared/contracts";
+import { mediaAssetRepository } from "../media-library";
 
 /** 统一处理后台/API/AI 的文章上传，保证幂等、内容规划关联和审计行为一致。 */
 export async function uploadArticle(input: unknown) {
@@ -12,6 +13,14 @@ export async function uploadArticle(input: unknown) {
     throw error;
   }
   let uploadInput = parsed.data;
+  if (uploadInput.coverAssetId) {
+    const asset = await mediaAssetRepository.get(uploadInput.coverAssetId);
+    if (!asset || asset.status !== "active") {
+      const error = new Error("封面素材不存在或已归档");
+      Object.assign(error, { status: 400, code: "MEDIA_ASSET_UNAVAILABLE" });
+      throw error;
+    }
+  }
   if (uploadInput.briefId) {
     const context = await contentPlanningStore.getBriefContext(uploadInput.briefId);
     if (!context) { const error = new Error("文章任务不存在"); Object.assign(error, { status: 404, code: "BRIEF_NOT_FOUND" }); throw error; }

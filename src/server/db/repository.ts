@@ -40,7 +40,7 @@ export interface ArticleRepository {
   createOrGet(input: UploadArticleInput): Promise<{ article: Article; created: boolean }>;
   list(query: ArticleQuery): Promise<{ items: Article[]; total: number }>;
   get(id: string): Promise<Article | undefined>;
-  updateMedia(id: string, coverUrl?: string, images?: string[]): Promise<Article | undefined>;
+  updateMedia(id: string, coverUrl?: string, images?: string[], coverAssetId?: string): Promise<Article | undefined>;
   updateStatus(id: string, status: ArticleStatus): Promise<Article | undefined>;
   createOperation(articleId: string, action: Operation["action"]): Promise<Operation>;
   getOperation(id: string): Promise<Operation | undefined>;
@@ -99,10 +99,10 @@ export class MemoryRepository implements ArticleRepository {
     return this.articles.get(id);
   }
 
-  async updateMedia(id: string, coverUrl?: string, images?: string[]) {
+  async updateMedia(id: string, coverUrl?: string, images?: string[], coverAssetId?: string) {
     const article = this.articles.get(id);
     if (!article) return undefined;
-    const updated = { ...article, ...(coverUrl !== undefined ? { coverUrl } : {}), ...(images !== undefined ? { images } : {}), updatedAt: new Date().toISOString() };
+    const updated = { ...article, ...(coverUrl !== undefined ? { coverUrl } : {}), ...(images !== undefined ? { images } : {}), ...(coverAssetId !== undefined ? { coverAssetId } : {}), updatedAt: new Date().toISOString() };
     this.articles.set(id, updated);
     return updated;
   }
@@ -167,14 +167,14 @@ type ArticleRow = QueryResultRow & {
   id: string; external_id: string | null; source: string | null; title: string; content: string;
   content_format: "html"; author: string | null; digest: string | null; cover_url: string | null;
   images: string[]; metadata: Record<string, unknown>; summary: string | null; outline: string[]; topics: string[]; keywords: string[]; content_hash: string | null; status: ArticleStatus; created_at: Date; updated_at: Date; archived_at: Date | null;
-  published_at: Date | null; wechat_publish_id: string | null; publish_confirmed: boolean; strategy_id: string | null; series_id: string | null; brief_id: string | null;
+  published_at: Date | null; wechat_publish_id: string | null; publish_confirmed: boolean; strategy_id: string | null; series_id: string | null; brief_id: string | null; cover_asset_id: string | null;
 };
 
 function toArticle(row: ArticleRow): Article {
   return {
     id: row.id, externalId: row.external_id ?? undefined, source: row.source ?? undefined, title: row.title,
     content: row.content, contentFormat: row.content_format, author: row.author ?? undefined, digest: row.digest ?? undefined, summary: row.summary ?? undefined, outline: row.outline ?? [], topics: row.topics ?? [], keywords: row.keywords ?? [], contentHash: row.content_hash ?? contentHash(row.content),
-    coverUrl: row.cover_url ?? undefined, images: row.images ?? [], metadata: row.metadata ?? {}, status: row.status,
+    coverUrl: row.cover_url ?? undefined, coverAssetId: row.cover_asset_id ?? undefined, images: row.images ?? [], metadata: row.metadata ?? {}, status: row.status,
     createdAt: row.created_at.toISOString(), updatedAt: row.updated_at.toISOString(), archivedAt: row.archived_at?.toISOString(), publishedAt: row.published_at?.toISOString(), wechatPublishId: row.wechat_publish_id ?? undefined, publishConfirmed: row.publish_confirmed ?? false, strategyId: row.strategy_id ?? undefined, seriesId: row.series_id ?? undefined, briefId: row.brief_id ?? undefined,
   };
 }
@@ -195,11 +195,11 @@ export class PgRepository implements ArticleRepository {
     await this.ready;
     const id = randomUUID();
     const result = await this.pool.query<ArticleRow>(
-      `INSERT INTO articles (id, external_id, source, title, content, content_format, author, digest, cover_url, images, metadata, summary, outline, topics, keywords, content_hash, strategy_id, series_id, brief_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16,$17,$18,$19)
+      `INSERT INTO articles (id, external_id, source, title, content, content_format, author, digest, cover_url, cover_asset_id, images, metadata, summary, outline, topics, keywords, content_hash, strategy_id, series_id, brief_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13,$14::jsonb,$15::jsonb,$16::jsonb,$17,$18,$19,$20)
        ON CONFLICT (source, external_id) WHERE source IS NOT NULL AND external_id IS NOT NULL DO NOTHING
        RETURNING *`,
-      [id, input.externalId ?? null, input.source ?? null, input.title, input.content, input.contentFormat, input.author ?? null, input.digest ?? null, input.coverUrl ?? null, JSON.stringify(input.images ?? []), JSON.stringify(input.metadata ?? {}), input.summary ?? null, JSON.stringify(input.outline ?? []), JSON.stringify(input.topics ?? []), JSON.stringify(input.keywords ?? []), contentHash(input.content), input.strategyId ?? null, input.seriesId ?? null, input.briefId ?? null],
+      [id, input.externalId ?? null, input.source ?? null, input.title, input.content, input.contentFormat, input.author ?? null, input.digest ?? null, input.coverUrl ?? null, input.coverAssetId ?? null, JSON.stringify(input.images ?? []), JSON.stringify(input.metadata ?? {}), input.summary ?? null, JSON.stringify(input.outline ?? []), JSON.stringify(input.topics ?? []), JSON.stringify(input.keywords ?? []), contentHash(input.content), input.strategyId ?? null, input.seriesId ?? null, input.briefId ?? null],
     );
     if (result.rows[0]) return { article: toArticle(result.rows[0]), created: true };
     const existing = await this.pool.query<ArticleRow>("SELECT * FROM articles WHERE source = $1 AND external_id = $2 LIMIT 1", [input.source, input.externalId]);
@@ -221,7 +221,7 @@ export class PgRepository implements ArticleRepository {
   }
 
   async get(id: string) { await this.ready; const result = await this.pool.query<ArticleRow>("SELECT * FROM articles WHERE id = $1", [id]); return result.rows[0] ? toArticle(result.rows[0]) : undefined; }
-  async updateMedia(id: string, coverUrl?: string, images?: string[]) { await this.ready; const result = await this.pool.query<ArticleRow>("UPDATE articles SET cover_url=COALESCE($2,cover_url), images=COALESCE($3::jsonb,images), updated_at=now() WHERE id=$1 RETURNING *", [id, coverUrl ?? null, images === undefined ? null : JSON.stringify(images)]); return result.rows[0] ? toArticle(result.rows[0]) : undefined; }
+  async updateMedia(id: string, coverUrl?: string, images?: string[], coverAssetId?: string) { await this.ready; const result = await this.pool.query<ArticleRow>("UPDATE articles SET cover_url=COALESCE($2,cover_url), images=COALESCE($3::jsonb,images), cover_asset_id=COALESCE($4,cover_asset_id), updated_at=now() WHERE id=$1 RETURNING *", [id, coverUrl ?? null, images === undefined ? null : JSON.stringify(images), coverAssetId ?? null]); return result.rows[0] ? toArticle(result.rows[0]) : undefined; }
   async updateStatus(id: string, status: ArticleStatus) { await this.ready; const result = await this.pool.query<ArticleRow>("UPDATE articles SET status = $2, updated_at = now(), archived_at = CASE WHEN $2 = 'archived' THEN now() ELSE NULL END WHERE id = $1 RETURNING *", [id, status]); return result.rows[0] ? toArticle(result.rows[0]) : undefined; }
   async createOperation(articleId: string, action: Operation["action"]) { await this.ready; const operation: Operation = { id: randomUUID(), articleId, provider: "wechat", action, status: "pending", createdAt: new Date().toISOString() }; const inserted = await this.pool.query<Operation>("INSERT INTO channel_operations (id, article_id, provider, action) VALUES ($1,$2,$3,$4) ON CONFLICT (article_id, provider, action) WHERE status = 'pending' DO NOTHING RETURNING id, article_id AS \"articleId\", provider, action, status, external_id AS \"externalId\", error_message AS \"errorMessage\", created_at AS \"createdAt\", completed_at AS \"completedAt\"", [operation.id, articleId, "wechat", action]); if (inserted.rows[0]) return inserted.rows[0]; const existing = await this.pool.query<Operation>("SELECT id, article_id AS \"articleId\", provider, action, status, external_id AS \"externalId\", error_message AS \"errorMessage\", created_at AS \"createdAt\", completed_at AS \"completedAt\" FROM channel_operations WHERE article_id = $1 AND action = $2 AND status = 'pending' LIMIT 1", [articleId, action]); if (!existing.rows[0]) throw new Error("渠道操作幂等写入后无法读取任务"); return existing.rows[0]; }
   async getOperation(id: string) { await this.ready; const result = await this.pool.query<Operation>("SELECT id, article_id AS \"articleId\", provider, action, status, external_id AS \"externalId\", error_message AS \"errorMessage\", created_at AS \"createdAt\", completed_at AS \"completedAt\" FROM channel_operations WHERE id = $1", [id]); return result.rows[0]; }

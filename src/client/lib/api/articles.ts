@@ -4,7 +4,7 @@ import type { Article, Capabilities } from "./types";
 export const articleApi = {
   list: (params = "") => request<{ data: Article[]; meta: { total: number } }>(`/api/v1/articles${params}`),
   get: (id: string) => request<{ data: Article }>(`/api/v1/articles/${id}`),
-  updateMedia: (id: string, input: { coverUrl?: string; images?: string[] }) => request<{ data: Article }>(`/api/v1/articles/${id}/media`, { method: "PATCH", body: JSON.stringify(input) }),
+  updateMedia: (id: string, input: { coverUrl?: string; coverAssetId?: string; images?: string[] }) => request<{ data: Article }>(`/api/v1/articles/${id}/media`, { method: "PATCH", body: JSON.stringify(input) }),
   archive: (id: string) => request<{ data: Article }>(`/api/v1/articles/${id}/archive`, { method: "POST" }),
   restore: (id: string) => request<{ data: Article }>(`/api/v1/articles/${id}/restore`, { method: "POST" }),
   capabilities: () => request<{ data: Capabilities }>("/api/v1/channels/wechat/capabilities"),

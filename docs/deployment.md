@@ -64,6 +64,8 @@ docker compose logs -f app
 
 应用容器启动时会自动执行数据库 migration，然后启动 Node 服务。
 
+图片素材保存在 Compose 的 `media_data` volume 中，默认目录为 `/app/data/media`。不要把该目录改成容器临时目录，否则重建容器后文章封面会丢失。
+
 检查服务：
 
 ```bash
@@ -144,6 +146,17 @@ docker compose exec postgres sh -c \
 
 备份文件应保存到独立存储，不要只放在部署主机上。
 
+同时备份素材 volume（与数据库备份保持同一时间点）：
+
+```bash
+docker run --rm \
+  -v content-hub_media_data:/source:ro \
+  -v "$PWD":/backup \
+  alpine tar czf /backup/media-$(date +%Y%m%d-%H%M%S).tar.gz -C /source .
+```
+
+恢复素材 volume 前停止应用，再将归档解压到同一个 volume。数据库中的 `storage_key` 必须与 volume 内的相对路径保持一致。
+
 恢复前先停止应用，避免恢复期间写入新数据：
 
 ```bash
@@ -205,6 +218,7 @@ docker compose down -v
 
 - [ ] `.env` 使用了独立随机密钥，未提交到 Git
 - [ ] PostgreSQL 使用持久化 volume
+- [ ] `media_data` 使用持久化 volume，并完成图片素材备份恢复演练
 - [ ] 已配置 HTTPS 和域名
 - [ ] `/health` 返回正常
 - [ ] `/ready` 返回 PostgreSQL ready

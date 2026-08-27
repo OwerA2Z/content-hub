@@ -59,6 +59,7 @@ export const uploadArticleSchema = z.object({
   author: z.string().trim().max(100).optional(),
   digest: z.string().trim().max(300).optional(),
   coverUrl: z.string().url().max(2_000).optional(),
+  coverAssetId: z.string().uuid().optional(),
   images: z.array(z.string().url().max(2_000)).max(100).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   summary: z.string().trim().min(1).max(2_000).optional(),
@@ -72,6 +73,7 @@ export const uploadArticleSchema = z.object({
 
 export const articleMediaSchema = z.object({
   coverUrl: z.string().url().max(2_000).optional(),
+  coverAssetId: z.string().uuid().optional(),
   images: z.array(z.string().url().max(2_000)).max(100).optional(),
 });
 
@@ -87,6 +89,7 @@ export interface Article {
   author?: string;
   digest?: string;
   coverUrl?: string;
+  coverAssetId?: string;
   images: string[];
   metadata: Record<string, unknown>;
   summary?: string;

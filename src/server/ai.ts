@@ -14,6 +14,8 @@ export function toAiArticle(article: Article, format: "text" | "html") {
     publishedAt: article.publishedAt,
     createdAt: article.createdAt,
     coverUrl: article.coverUrl,
+    // 返回素材 ID 让 AI 能复用已有本地封面，而不是重复上传同一张图片。
+    coverAssetId: article.coverAssetId,
     metadata: pickPublicMetadata(article.metadata),
   };
   return format === "html"

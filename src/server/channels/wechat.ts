@@ -3,6 +3,8 @@ import { promises as dns } from "node:dns";
 import { isIP } from "node:net";
 import type { Article, ChannelCapabilities, Operation } from "../../shared/contracts";
 import { config } from "../config";
+import { mediaAssetRepository } from "../media-library";
+import { readMediaFile } from "../media-storage";
 
 export interface ChannelResult { externalId: string; }
 
@@ -38,7 +40,7 @@ export class WechatProvider implements ChannelProvider {
 
   async createDraft(article: Article): Promise<ChannelResult> {
     if (!config.WECHAT_APP_ID || !config.WECHAT_APP_SECRET) return { externalId: `mock-draft-${article.id}-${randomUUID().slice(0, 8)}` };
-    const thumbMediaId = await this.uploadCover(article.coverUrl ?? article.images[0]);
+    const thumbMediaId = await this.uploadCover(article);
     const response = await this.call<{ media_id?: string }>("/cgi-bin/draft/add", {
       method: "POST",
       body: JSON.stringify({ articles: [{ title: article.title, author: article.author ?? "", digest: article.digest ?? "", content: article.content, thumb_media_id: thumbMediaId }] }),
@@ -85,8 +87,15 @@ export class WechatProvider implements ChannelProvider {
     return body;
   }
 
-  private async uploadCover(urlValue?: string) {
-    if (!urlValue) throw new Error("微信公众号草稿需要 coverUrl 或 images[0] 作为封面");
+  private async uploadCover(article: Article) {
+    if (article.coverAssetId) {
+      const asset = await mediaAssetRepository.get(article.coverAssetId);
+      if (!asset || asset.status !== "active") throw new Error("微信公众号草稿需要有效的封面素材");
+      const bytes = await readMediaFile(asset.storageKey);
+      return this.uploadCoverBytes(bytes, asset.mimeType, asset.originalName);
+    }
+    const urlValue = article.coverUrl ?? article.images[0];
+    if (!urlValue) throw new Error("微信公众号草稿需要封面素材、coverUrl 或 images[0]");
     const source = new URL(urlValue);
     if (!['http:', 'https:'].includes(source.protocol)) throw new Error("封面图片只允许使用 HTTP(S) URL");
     await assertPublicHost(source.hostname);
@@ -95,8 +104,12 @@ export class WechatProvider implements ChannelProvider {
     const contentType = image.headers.get("content-type") ?? "image/jpeg";
     const bytes = await image.arrayBuffer();
     if (bytes.byteLength > 10 * 1024 * 1024) throw new Error("封面图片不能超过 10MB");
+    return this.uploadCoverBytes(new Uint8Array(bytes), contentType, "cover-image");
+  }
+
+  private async uploadCoverBytes(bytes: Uint8Array, contentType: string, filename: string) {
     const form = new FormData();
-    form.append("media", new Blob([bytes], { type: contentType }), "cover-image");
+    form.append("media", new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: contentType }), filename);
     const apiUrl = new URL("/cgi-bin/material/add_material", config.WECHAT_API_BASE_URL);
     apiUrl.searchParams.set("access_token", await this.getAccessToken());
     apiUrl.searchParams.set("type", "thumb");

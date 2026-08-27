@@ -12,7 +12,10 @@ export interface Article {
   content: string;
   coverUrl?: string;
   images?: string[];
+  coverAssetId?: string;
 }
+
+export interface MediaAsset { id: string; kind: "image"; originalName: string; mimeType: string; sizeBytes: number; width?: number; height?: number; alt?: string; tags: string[]; status: "active" | "archived"; url: string; createdAt: string; updatedAt: string; }
 
 export interface Capabilities { draft: boolean; publish: boolean; reason?: string; }
 import type { TokenScope } from "../../../shared/scopes";

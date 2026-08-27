@@ -19,7 +19,7 @@ cp .env.docker.example .env
 docker compose up -d --build
 ```
 
-应用和 PostgreSQL 会一起启动，文章数据保存在 `postgres_data` volume 中。查看日志：
+应用和 PostgreSQL 会一起启动，文章数据保存在 `postgres_data` volume 中，图片素材保存在 `media_data` volume 中。查看日志：
 
 完整生产部署、HTTPS、备份恢复、升级和回滚说明见 [docs/deployment.md](docs/deployment.md)。
 
@@ -44,7 +44,7 @@ npm run dev:client
 ## 使用文档
 
 - [后台使用手册](docs/user-guide.md)：首次启动、文章管理、内容规划、API 中心和微信公众号操作。
-- [AI 对接说明书](docs/ai-integration.md)：Token 权限、推荐调用流程、防重复检测、文章上传和错误处理。
+- [AI 对接说明书](docs/ai-integration.md)：Token 权限、推荐调用流程、防重复检测、文章上传、图片素材和错误处理。
 - [API 使用说明](docs/api.md)：完整接口清单和请求示例。
 
 首次打开后台会进入初始化向导，创建第一个管理员账号。外部上传 API 使用 `API_TOKEN`：

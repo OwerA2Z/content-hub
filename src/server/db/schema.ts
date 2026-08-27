@@ -1,4 +1,4 @@
-import { boolean, index, jsonb, pgTable, text, timestamp, uuid, varchar, integer, unique } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, jsonb, pgTable, text, timestamp, uuid, varchar, integer, unique } from "drizzle-orm/pg-core";
 
 export const contentStrategies = pgTable("content_strategies", {
   id: uuid("id").defaultRandom().primaryKey(), name: varchar("name", { length: 120 }).notNull(), goal: text("goal").notNull(), audience: varchar("audience", { length: 500 }), tone: varchar("tone", { length: 300 }), contentPillars: jsonb("content_pillars").$type<string[]>().notNull().default([]), avoidTopics: jsonb("avoid_topics").$type<string[]>().notNull().default([]), status: varchar("status", { length: 20 }).notNull().default("active"), createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -24,6 +24,7 @@ export const articles = pgTable(
     author: varchar("author", { length: 100 }),
     digest: varchar("digest", { length: 300 }),
     coverUrl: text("cover_url"),
+    coverAssetId: uuid("cover_asset_id"),
     images: jsonb("images").$type<string[]>().notNull().default([]),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     summary: text("summary"),
@@ -58,6 +59,22 @@ export const channelOperations = pgTable("channel_operations", {
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+});
+
+export const mediaAssets = pgTable("media_assets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  kind: varchar("kind", { length: 20 }).notNull().default("image"),
+  originalName: varchar("original_name", { length: 255 }).notNull(),
+  storageKey: varchar("storage_key", { length: 500 }).notNull().unique(),
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+  width: integer("width"),
+  height: integer("height"),
+  alt: varchar("alt", { length: 500 }),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const auditLogs = pgTable("audit_logs", {

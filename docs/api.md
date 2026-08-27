@@ -25,6 +25,33 @@ curl -X POST http://localhost:3000/api/v1/articles/upload \
 
 `source + externalId` 是幂等键，重复提交会返回同一文章 ID。
 
+文章封面也可以引用素材库中的本地图片：先使用具备 `media:write` 权限的 Token 上传素材，再在文章请求中填写返回的 `coverAssetId`。需要读取或预览素材时再授予 `media:read`。素材 ID 与 `coverUrl` 可以同时保留，微信公众号草稿会优先使用素材文件。
+
+## 素材库
+
+素材库首版只支持 JPG、PNG、WebP 和 GIF，单张图片最大 10 MB。素材元数据保存在 PostgreSQL，图片文件保存在 `MEDIA_ROOT` 对应的本地持久化目录。
+
+```bash
+curl -X POST http://localhost:3000/api/v1/media/assets \
+  -H 'Authorization: Bearer <TOKEN_WITH_media:write>' \
+  -F 'file=@cover.png' \
+  -F 'tags=["通用","封面"]' \
+  -F 'alt=通用封面'
+```
+
+素材接口：
+
+```text
+GET    /api/v1/media/assets?q=关键词&tag=封面&page=1&pageSize=24   # media:read
+GET    /api/v1/media/assets/:id                                    # media:read
+POST   /api/v1/media/assets                                        # media:write
+PATCH  /api/v1/media/assets/:id                                    # media:write；归档需 media:delete
+DELETE /api/v1/media/assets/:id                                    # media:delete（软归档）
+GET    /media/assets/:id/content                                  # media:read
+```
+
+`POST` 返回的 `data.id` 可作为文章上传或文章媒体更新请求中的 `coverAssetId`。归档素材不会删除已关联文章；读取已归档素材内容会返回 404。
+
 ## 查询
 
 后台登录后可查询；外部系统也可以使用相同 Bearer Token 查询：

@@ -11,6 +11,9 @@ export const TOKEN_SCOPES = [
   "operations:read",
   "wechat:draft",
   "wechat:publish",
+  "media:read",
+  "media:write",
+  "media:delete",
 ] as const;
 
 export type TokenScope = typeof TOKEN_SCOPES[number];
@@ -28,4 +31,7 @@ export const TOKEN_SCOPE_LABELS: Record<TokenScope, string> = {
   "operations:read": "读取操作任务",
   "wechat:draft": "创建微信草稿",
   "wechat:publish": "提交微信发布",
+  "media:read": "读取图片素材",
+  "media:write": "上传/编辑图片素材",
+  "media:delete": "归档图片素材",
 };

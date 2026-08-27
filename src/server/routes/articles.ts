@@ -7,6 +7,7 @@ import { requireAdminSession } from "../auth";
 import { requireAdminOrScopes, requireApiToken } from "../http/middleware";
 import { sendError } from "../http/errors";
 import { uploadArticle } from "../services/article-upload";
+import { mediaAssetRepository } from "../media-library";
 
 export function createArticlesRouter() {
   const router = Router();
@@ -23,7 +24,17 @@ export function createArticlesRouter() {
     try { const article = await repository.get(String(req.params.id)); if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在"); const result = checkDuplicate({ title: article.title, summary: article.summary, outline: article.outline, topics: article.topics, keywords: article.keywords, content: article.content }, (await repository.listDedupCandidates()).filter((candidate) => candidate.id !== article.id)); return res.json({ data: result }); } catch (error) { return next(error); }
   });
   router.patch("/articles/:id/media", requireAdminSession, async (req, res, next) => {
-    try { const input = articleMediaSchema.parse(req.body); const article = await repository.updateMedia(String(req.params.id), input.coverUrl, input.images); if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在"); await repository.recordAudit({ action: "article.media.update", actorType: "admin", actorId: res.locals.adminUsername, articleId: article.id }); return res.json({ data: article }); } catch (error) { return next(error); }
+    try {
+      const input = articleMediaSchema.parse(req.body);
+      if (input.coverAssetId) {
+        const asset = await mediaAssetRepository.get(input.coverAssetId);
+        if (!asset || asset.status !== "active") return sendError(res, 400, "MEDIA_ASSET_UNAVAILABLE", "封面素材不存在或已归档");
+      }
+      const article = await repository.updateMedia(String(req.params.id), input.coverUrl, input.images, input.coverAssetId);
+      if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在");
+      await repository.recordAudit({ action: "article.media.update", actorType: "admin", actorId: res.locals.adminUsername, articleId: article.id });
+      return res.json({ data: article });
+    } catch (error) { return next(error); }
   });
   router.post("/articles/:id/:action", requireAdminOrScopes(["articles:archive"]), async (req, res, next) => {
     try { const action = z.enum(["archive", "restore"]).parse(String(req.params.action)); const status = action === "archive" ? "archived" : "uploaded"; const article = await repository.updateStatus(String(req.params.id), status); if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在"); await repository.recordAudit({ action: `article.${action}`, actorType: res.locals.authActorType ?? "admin", actorId: res.locals.adminUsername, articleId: article.id }); return res.json({ data: article }); } catch (error) { return next(error); }

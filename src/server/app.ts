@@ -12,11 +12,14 @@ import { createAdminTokensRouter } from "./routes/admin-tokens";
 import { createPlanningRouter } from "./routes/planning";
 import { createCandidatesRouter } from "./routes/candidates";
 import { errorHandler } from "./http/errors";
+import { createMediaApiRouter, createMediaContentRouter } from "./routes/media";
+import { mediaRepositoryReady } from "./media-library";
 
 const app = express();
 // 生产环境位于 Nginx/Caddy 后面时，使用代理转发的 HTTPS 协议生成正确的 API URL。
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "2mb" }));
+app.use("/media", createMediaContentRouter());
 
 app.get("/health", (_req, res) => res.json({ data: { status: "ok" } }));
 app.get("/ready", async (_req, res) => {
@@ -24,6 +27,7 @@ app.get("/ready", async (_req, res) => {
     await repositoryReady;
     await userStoreReady;
     await tokenStoreReady;
+    await mediaRepositoryReady;
     return res.json({ data: { status: "ready", database: repositoryKind } });
   } catch {
     return res.status(503).json({ error: { code: "NOT_READY", message: "数据库尚未就绪" } });
@@ -39,6 +43,7 @@ app.use("/api/v1", createCandidatesRouter());
 app.use("/api/v1", createIntegrationsRouter());
 app.use("/api/v1", createAdminTokensRouter());
 app.use("/api/v1", createChannelsRouter());
+app.use("/api/v1/media", createMediaApiRouter());
 
 app.use(errorHandler);
 

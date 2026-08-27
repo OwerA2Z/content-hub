@@ -6,6 +6,8 @@ services:
       - "3000:3000"
     env_file:
       - .env
+    volumes:
+      - media_data:/app/data/media
     depends_on:
       postgres:
         condition: service_healthy
@@ -27,3 +29,4 @@ services:
 
 volumes:
   postgres_data:
+  media_data:

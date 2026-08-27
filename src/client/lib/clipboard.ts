@@ -8,6 +8,27 @@ function htmlToPlainText(html: string) {
   return (container.innerText || container.textContent || "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/** 复制普通文本，并在非安全上下文或浏览器禁用 Clipboard API 时降级。 */
+export async function copyText(value: string) {
+  if (navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      // 继续使用传统 textarea 方案。
+    }
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("当前浏览器不支持复制，请手动复制");
+}
+
 /** 复制微信公众号可直接粘贴的富文本；不支持 HTML 剪贴板时降级为纯文本。 */
 export async function copyArticleContent(title: string, content: string) {
   const plainText = `${title}\n\n${htmlToPlainText(content)}`;

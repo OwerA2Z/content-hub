@@ -67,9 +67,9 @@ export function useArticles() {
     articleApi.publish(selected.id, draftId).then(() => setNotice("发布任务已提交")).catch((reason: unknown) => setNotice(reason instanceof Error ? reason.message : "发布失败"));
   }, [draftId, selected]);
 
-  const updateMedia = useCallback((coverUrl: string) => {
+  const updateMedia = useCallback((coverUrl: string, coverAssetId?: string) => {
     if (!selected) return;
-    articleApi.updateMedia(selected.id, { coverUrl }).then((result) => { setSelected(result.data); setNotice("封面图片已保存"); load(); }).catch((reason: unknown) => setNotice(reason instanceof Error ? reason.message : "保存封面图片失败"));
+    articleApi.updateMedia(selected.id, { coverUrl, coverAssetId }).then((result) => { setSelected(result.data); setNotice("封面图片已保存"); load(); }).catch((reason: unknown) => setNotice(reason instanceof Error ? reason.message : "保存封面图片失败"));
   }, [load, selected]);
 
   return { articles, total, caps, selected, q, status, includeArchived, loading, notice, draftId, setQ, setStatus, setIncludeArchived, setNotice, setSelected, load, selectArticle, archive, restore, createDraft, retry, publish, updateMedia, canPublish: Boolean(draftId && caps?.publish) };

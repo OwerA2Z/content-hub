@@ -6,6 +6,8 @@ const configSchema = z.object({
   API_TOKEN: z.string().min(16).default("local-development-api-token"),
   SESSION_SECRET: z.string().min(16).default("local-development-session-secret"),
   API_TOKEN_SCOPES: z.string().default("articles:read,articles:write,planning:read,dedup:check,operations:read"),
+  // 素材文件根目录由部署环境覆盖，Docker 默认挂载到持久化 volume。
+  MEDIA_ROOT: z.string().min(1).default("./data/media"),
   PUBLIC_BASE_URL: z.string().url().optional(),
   DATABASE_URL: z.string().url().optional(),
   WECHAT_APP_ID: z.string().optional(),

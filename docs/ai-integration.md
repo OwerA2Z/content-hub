@@ -42,11 +42,38 @@ Content-Type: application/json
 | `planning:write` | AI 创建/更新内容系列和文章任务 | `POST/PATCH /ai/content-plan/*` |
 | `recommendations:write` | AI 提交候选文章并触发重评估 | `POST /ai/candidate-pools/daily/*` |
 | `recommendations:read` | 读取每日候选池和推荐排序 | `GET /candidate-pools/daily` |
+| `media:read` | AI 读取和预览图片素材 | `GET /media/assets`、`GET /media/assets/:id/content` |
+| `media:write` | AI 上传和编辑图片素材 | `POST/PATCH /media/assets` |
 | 按需组合 | 外部内容管道和后台查询 | `/articles/upload`、文章查询和内容规划查询 |
 
 Token 明文只在创建时返回一次，数据库只保存 hash。生产环境不要把 Token 写入代码仓库、提示词或日志。
 
-## 3. 推荐调用流程
+## 3. 图片素材复用
+
+当文章需要公众号封面时，AI 可以先上传一张本地素材，再把返回的 `id` 填入文章的 `coverAssetId`。这样平台能在创建微信公众号草稿时直接读取本地文件，不依赖临时公网图片地址。
+
+```bash
+curl -X POST "$BASE_URL/api/v1/media/assets" \
+  -H "Authorization: Bearer $MEDIA_TOKEN" \
+  -F "file=@cover.png" \
+  -F 'tags=["AI","封面"]' \
+  -F 'alt=AI 文章封面'
+```
+
+上传响应中的 `data.id` 用于文章上传：
+
+```json
+{
+  "title": "AI 生成的新文章",
+  "content": "<p>正文</p>",
+  "contentFormat": "html",
+  "coverAssetId": "素材返回的 UUID"
+}
+```
+
+读取素材列表和图片内容分别需要 `media:read`；修改标签需要 `media:write`，归档需要 `media:delete`。素材归档是软删除，不会使文章记录丢失，但微信公众号后续创建草稿时会提示封面素材不可用。
+
+## 4. 推荐调用流程
 
 ### 第一步：读取下一个内容任务
 
@@ -224,7 +251,7 @@ curl -X POST "$BASE_URL/api/v1/ai/articles" \
 
 如果文章来自内容规划，可以附带 `strategyId`、`seriesId`、`briefId`。使用 `briefId` 时，系统会校验并自动补齐对应战略和系列关系。
 
-## 4. 幂等上传
+## 5. 幂等上传
 
 当同时提供 `source` 和 `externalId` 时，两者组成幂等键。网络超时后可以使用相同请求安全重试，重复请求会返回原文章记录而不会重复创建。
 
@@ -235,7 +262,7 @@ source: my-ai-agent
 externalId: <工作流名称>-<任务 ID>
 ```
 
-## 5. 文章状态与读取可见性
+## 6. 文章状态与读取可见性
 
 AI 上传成功后，文章通常处于 `uploaded` 状态。它不会立即出现在 AI 只读列表中。
 
@@ -250,7 +277,7 @@ AI 上传成功后，文章通常处于 `uploaded` 状态。它不会立即出�
 
 AI 只读接口只返回微信公众号确认发布且未归档的文章，这是为了避免 AI 把草稿或未审核内容当成既有事实。
 
-## 6. 每日候选池
+## 7. 每日候选池
 
 AI 可以每天一次性提交 1-10 篇候选文章，平台会把候选保存到当天的候选池，并与以下内容比较：
 
@@ -293,7 +320,7 @@ curl -X POST "$BASE_URL/api/v1/ai/candidate-pools/daily/candidates" \
 
 后台管理员可以在“AI 推荐”页面查看候选池，并点击“接受并保存文章”。保存后再从文章管理页面创建微信草稿或提交发布。
 
-## 7. 错误处理
+## 8. 错误处理
 
 成功响应格式：
 
@@ -322,7 +349,7 @@ AI 客户端至少应处理：
 - `429`：请求过于频繁，使用退避重试。
 - `500/503`：服务或数据库暂时不可用，保留任务并稍后重试。
 
-## 8. 安全建议
+## 9. 安全建议
 
 - 读取、写入和规划权限按最小 scope 原则组合，避免给同一个 Token 授予无关权限。
 - Token 放在服务端密钥管理系统或运行时环境变量中。

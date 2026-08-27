@@ -40,6 +40,7 @@ export interface ArticleRepository {
   createOrGet(input: UploadArticleInput): Promise<{ article: Article; created: boolean }>;
   list(query: ArticleQuery): Promise<{ items: Article[]; total: number }>;
   get(id: string): Promise<Article | undefined>;
+  updateMedia(id: string, coverUrl?: string, images?: string[]): Promise<Article | undefined>;
   updateStatus(id: string, status: ArticleStatus): Promise<Article | undefined>;
   createOperation(articleId: string, action: Operation["action"]): Promise<Operation>;
   getOperation(id: string): Promise<Operation | undefined>;
@@ -96,6 +97,14 @@ export class MemoryRepository implements ArticleRepository {
 
   async get(id: string): Promise<Article | undefined> {
     return this.articles.get(id);
+  }
+
+  async updateMedia(id: string, coverUrl?: string, images?: string[]) {
+    const article = this.articles.get(id);
+    if (!article) return undefined;
+    const updated = { ...article, ...(coverUrl !== undefined ? { coverUrl } : {}), ...(images !== undefined ? { images } : {}), updatedAt: new Date().toISOString() };
+    this.articles.set(id, updated);
+    return updated;
   }
 
   async updateStatus(id: string, status: ArticleStatus): Promise<Article | undefined> {
@@ -212,6 +221,7 @@ export class PgRepository implements ArticleRepository {
   }
 
   async get(id: string) { await this.ready; const result = await this.pool.query<ArticleRow>("SELECT * FROM articles WHERE id = $1", [id]); return result.rows[0] ? toArticle(result.rows[0]) : undefined; }
+  async updateMedia(id: string, coverUrl?: string, images?: string[]) { await this.ready; const result = await this.pool.query<ArticleRow>("UPDATE articles SET cover_url=COALESCE($2,cover_url), images=COALESCE($3::jsonb,images), updated_at=now() WHERE id=$1 RETURNING *", [id, coverUrl ?? null, images === undefined ? null : JSON.stringify(images)]); return result.rows[0] ? toArticle(result.rows[0]) : undefined; }
   async updateStatus(id: string, status: ArticleStatus) { await this.ready; const result = await this.pool.query<ArticleRow>("UPDATE articles SET status = $2, updated_at = now(), archived_at = CASE WHEN $2 = 'archived' THEN now() ELSE NULL END WHERE id = $1 RETURNING *", [id, status]); return result.rows[0] ? toArticle(result.rows[0]) : undefined; }
   async createOperation(articleId: string, action: Operation["action"]) { await this.ready; const operation: Operation = { id: randomUUID(), articleId, provider: "wechat", action, status: "pending", createdAt: new Date().toISOString() }; const inserted = await this.pool.query<Operation>("INSERT INTO channel_operations (id, article_id, provider, action) VALUES ($1,$2,$3,$4) ON CONFLICT (article_id, provider, action) WHERE status = 'pending' DO NOTHING RETURNING id, article_id AS \"articleId\", provider, action, status, external_id AS \"externalId\", error_message AS \"errorMessage\", created_at AS \"createdAt\", completed_at AS \"completedAt\"", [operation.id, articleId, "wechat", action]); if (inserted.rows[0]) return inserted.rows[0]; const existing = await this.pool.query<Operation>("SELECT id, article_id AS \"articleId\", provider, action, status, external_id AS \"externalId\", error_message AS \"errorMessage\", created_at AS \"createdAt\", completed_at AS \"completedAt\" FROM channel_operations WHERE article_id = $1 AND action = $2 AND status = 'pending' LIMIT 1", [articleId, action]); if (!existing.rows[0]) throw new Error("渠道操作幂等写入后无法读取任务"); return existing.rows[0]; }
   async getOperation(id: string) { await this.ready; const result = await this.pool.query<Operation>("SELECT id, article_id AS \"articleId\", provider, action, status, external_id AS \"externalId\", error_message AS \"errorMessage\", created_at AS \"createdAt\", completed_at AS \"completedAt\" FROM channel_operations WHERE id = $1", [id]); return result.rows[0]; }

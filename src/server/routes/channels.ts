@@ -25,6 +25,7 @@ export function createChannelsRouter() {
       const draftId = z.object({ draftId: z.string().trim().min(1).optional() }).parse(req.body ?? {}).draftId;
       const article = await repository.get(String(req.params.id));
       if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在");
+      if (action === "draft" && !article.coverUrl && !article.images[0]) return sendError(res, 400, "COVER_REQUIRED", "创建微信公众号草稿前必须提供 coverUrl 或 images[0]");
       const capabilities = await wechatProvider.getCapabilities();
       if ((action === "draft" && !capabilities.draft) || (action === "publish" && !capabilities.publish)) return sendError(res, 403, "CHANNEL_CAPABILITY_UNAVAILABLE", capabilities.reason ?? "当前公众号不支持此操作");
       const operation = await repository.createOperation(article.id, action);

@@ -11,6 +11,7 @@ export interface Article {
   createdAt: string;
   content: string;
   coverUrl?: string;
+  images?: string[];
 }
 
 export interface Capabilities { draft: boolean; publish: boolean; reason?: string; }

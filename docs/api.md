@@ -155,6 +155,7 @@ POST /api/v1/articles/:id/wechat/retry
 ```
 
 接口立即返回 operation ID，使用 `GET /api/v1/operations/:id` 查询结果。发布需要先获得草稿 ID，并且公众号具备发布权限。
+创建真实微信公众号草稿时，文章必须提供 `coverUrl` 或 `images[0]`，且图片地址需要是可公网访问的 HTTP(S) URL。
 
 ## 运行检查
 

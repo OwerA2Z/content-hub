@@ -70,6 +70,11 @@ export const uploadArticleSchema = z.object({
   briefId: z.string().uuid().optional(),
 });
 
+export const articleMediaSchema = z.object({
+  coverUrl: z.string().url().max(2_000).optional(),
+  images: z.array(z.string().url().max(2_000)).max(100).optional(),
+});
+
 export type UploadArticleInput = z.infer<typeof uploadArticleSchema>;
 
 export interface Article {

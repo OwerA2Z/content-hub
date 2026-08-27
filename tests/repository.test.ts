@@ -44,4 +44,11 @@ describe("MemoryRepository", () => {
     expect(first.article.outline).toEqual(["背景", "结论"]);
     expect(first.article.contentHash).toBe(second.article.contentHash);
   });
+  it("可以为已有文章补充封面图片", async () => {
+    const repository = new MemoryRepository();
+    const { article } = await repository.createOrGet({ title: "待发布文章", content: "<p>正文</p>", contentFormat: "html" });
+    const updated = await repository.updateMedia(article.id, "https://example.com/cover.jpg", ["https://example.com/cover.jpg"]);
+    expect(updated?.coverUrl).toBe("https://example.com/cover.jpg");
+    expect(updated?.images).toEqual(["https://example.com/cover.jpg"]);
+  });
 });

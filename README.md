@@ -2,7 +2,7 @@
 
 TypeScript 全栈的文章管理后台，首个渠道适配微信公众号。
 
-前端使用 React + TypeScript + Vite + Tailwind CSS v4，设计 token 统一维护在 `src/client/styles.css` 的 `@theme` 中。
+前端使用 React + TypeScript + Vite + Ant Design，统一主题配置在 `src/client/main.tsx`，页面视觉样式维护在 `src/client/styles.css`。
 
 ## 本地启动
 

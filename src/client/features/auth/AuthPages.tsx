@@ -4,7 +4,7 @@ import { authApi } from "../../lib/api/auth";
 import { AuthInput, AuthShell, ErrorText } from "./AuthComponents";
 
 function AuthForm({ children, onSubmit }: { children: React.ReactNode; onSubmit: () => void }) {
-  return <Form className="app-auth-form" onFinish={onSubmit}>{children}</Form>;
+  return <Form onFinish={onSubmit} layout="vertical" requiredMark={false}>{children}</Form>;
 }
 
 export function LoginPage({ onSuccess }: { onSuccess: () => void }) {

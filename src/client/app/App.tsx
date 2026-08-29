@@ -1,4 +1,4 @@
-import { Spin } from "antd";
+import { Flex, Spin } from "antd";
 import { useEffect, useState } from "react";
 import { authApi } from "../lib/api/auth";
 import { LoginPage, SetupPage } from "../features/auth/AuthPages";
@@ -21,7 +21,7 @@ export function App() {
       .finally(() => setChecking(false));
   }, []);
 
-  if (checking) return <div className="app-auth-loading"><Spin tip="正在检查登录状态…" /></div>;
+  if (checking) return <Flex justify="center" align="center" style={{ minHeight: "100vh" }}><Spin tip="正在检查登录状态…" /></Flex>;
   if (setupRequired) return <SetupPage onSuccess={() => { setSetupRequired(false); setLoggedIn(true); }} />;
   if (!loggedIn) return <LoginPage onSuccess={() => setLoggedIn(true)} />;
   return <AppShell onLogout={() => authApi.logout().finally(() => setLoggedIn(false))} />;

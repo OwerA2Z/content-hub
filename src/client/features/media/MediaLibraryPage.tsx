@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Empty, Input, Space, Spin, Tag, Typography, Upload } from "antd";
-import { Copy, ImagePlus, RefreshCw, Archive, Trash2 } from "lucide-react";
+import { Alert, Button, Card, Empty, Flex, Image, Input, Modal, Popconfirm, Space, Spin, Table, Tag, Typography, Upload } from "antd";
+import type { TableProps } from "antd";
+import { Copy, ImagePlus, RefreshCw } from "lucide-react";
 import { mediaApi } from "../../lib/api/media";
 import type { MediaAsset } from "../../lib/api/types";
 import { copyText } from "../../lib/clipboard";
@@ -12,5 +13,40 @@ export function MediaLibraryPage() {
   const upload = (file?: File) => { if (!file) return; mediaApi.upload(file).then(() => { setNotice("素材已上传"); load(); }).catch((error: unknown) => setNotice(error instanceof Error ? error.message : "上传素材失败")); };
   const copyUrl = (asset: MediaAsset) => copyText(asset.url).then(() => setNotice("素材 URL 已复制")).catch(() => setNotice("复制失败，请手动复制"));
   const archive = (asset: MediaAsset) => mediaApi.remove(asset.id).then(() => { setNotice("素材已归档"); load(); }).catch(() => setNotice("归档素材失败"));
-  return <div className="app-page"><div className="app-page-header"><div><Typography.Text className="app-eyebrow">MEDIA LIBRARY</Typography.Text><Typography.Title level={2} className="app-page-title">素材库</Typography.Title><Typography.Paragraph className="app-page-description">集中保存和复用公众号封面、配图等图片素材。</Typography.Paragraph></div><Space><Button icon={<RefreshCw size={15} />} onClick={load}>刷新</Button><Upload beforeUpload={(file) => { upload(file); return false; }} showUploadList={false} accept="image/jpeg,image/png,image/webp,image/gif"><Button type="primary" icon={<ImagePlus size={15} />}>上传图片</Button></Upload></Space></div><Card className="app-panel-card" title="图片素材"><div className="app-media-toolbar"><Input placeholder="搜索文件名或标签" value={query} onChange={(event) => setQuery(event.target.value)} /></div>{loading ? <div className="app-empty"><Spin /></div> : assets.length === 0 ? <Empty description="暂无图片素材，先上传一张通用封面吧。" /> : <div className="app-media-grid">{assets.map((asset) => <article className="app-media-card" key={asset.id}><div className="app-media-card__image"><img src={asset.url} alt={asset.alt || asset.originalName} /></div><div className="app-media-card__body"><div className="app-media-card__header"><div><p className="app-media-card__name">{asset.originalName}</p><p className="app-media-card__meta">{Math.ceil(asset.sizeBytes / 1024)} KB {asset.width && asset.height ? `· ${asset.width}×${asset.height}` : ""}</p></div><Tag color={asset.status === "active" ? "green" : undefined}>{asset.status === "active" ? "可用" : "已归档"}</Tag></div>{asset.tags.length > 0 && <div className="app-media-card__tags">{asset.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}</div>}<div className="app-media-card__actions"><Button icon={<Copy size={14} />} onClick={() => copyUrl(asset)}>复制 URL</Button>{asset.status === "active" && <Button icon={<Archive size={14} />} onClick={() => archive(asset)} aria-label="归档素材" /> }<Button danger icon={<Trash2 size={14} />} onClick={() => archive(asset)} aria-label="删除素材" /></div></div></article>)}</div>}{notice && <Alert className="app-notice" type="info" showIcon message={notice} />}</Card></div>;
+  const [detailAsset, setDetailAsset] = useState<MediaAsset>();
+  const columns: TableProps<MediaAsset>["columns"] = [
+    { title: "预览", key: "preview", width: 88, render: (_, asset) => <Image width={56} height={40} style={{ objectFit: "cover" }} src={asset.url} alt={asset.alt || asset.originalName} /> },
+    { title: "文件名", dataIndex: "originalName", key: "originalName", render: (name: string, asset) => <Typography.Link strong onClick={() => setDetailAsset(asset)}>{name}</Typography.Link> },
+    { title: "尺寸", key: "size", render: (_, asset) => `${Math.ceil(asset.sizeBytes / 1024)} KB${asset.width && asset.height ? ` · ${asset.width}×${asset.height}` : ""}` },
+    { title: "标签", dataIndex: "tags", key: "tags", render: (tags: string[]) => <Space wrap size={[4, 4]}>{tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}</Space> },
+    { title: "状态", dataIndex: "status", key: "status", render: (status: string) => <Tag color={status === "active" ? "success" : "default"}>{status === "active" ? "可用" : "已归档"}</Tag> },
+    { title: "操作", key: "actions", width: 220, render: (_, asset) => <Space size="small"><Button size="small" onClick={() => setDetailAsset(asset)}>详情</Button><Button size="small" icon={<Copy size={14} />} onClick={() => copyUrl(asset)}>复制 URL</Button>{asset.status === "active" && <Popconfirm title="确认归档此素材？" onConfirm={() => archive(asset)}><Button size="small" danger>归档</Button></Popconfirm>}</Space> },
+  ];
+  return (
+    <Flex vertical gap="large">
+      <Flex justify="space-between" align="flex-end" wrap gap="middle">
+        <Flex vertical gap="small">
+          <Typography.Text type="secondary">MEDIA LIBRARY</Typography.Text>
+          <Typography.Title level={2}>素材库</Typography.Title>
+          <Typography.Paragraph type="secondary">集中保存和复用公众号封面、配图等图片素材。</Typography.Paragraph>
+        </Flex>
+        <Space>
+          <Button icon={<RefreshCw size={15} />} onClick={load}>刷新</Button>
+          <Upload beforeUpload={(file) => { upload(file); return false; }} showUploadList={false} accept="image/jpeg,image/png,image/webp,image/gif">
+            <Button type="primary" icon={<ImagePlus size={15} />}>上传图片</Button>
+          </Upload>
+        </Space>
+      </Flex>
+      <Card title="图片素材">
+        <Flex vertical gap="middle">
+          <Input placeholder="搜索文件名或标签" value={query} onChange={(event) => setQuery(event.target.value)} />
+          {loading ? <Flex justify="center" align="center"><Spin /></Flex> : assets.length === 0 ? <Empty description="暂无图片素材，先上传一张通用封面吧。" /> : <Table rowKey="id" columns={columns} dataSource={assets} pagination={{ pageSize: 10, showTotal: (total) => `共 ${total} 个素材` }} scroll={{ x: 900 }} />}
+          {notice && <Alert type="info" showIcon message={notice} />}
+        </Flex>
+      </Card>
+      <Modal title="素材详情" open={Boolean(detailAsset)} onCancel={() => setDetailAsset(undefined)} footer={null}>
+        {detailAsset && <Space direction="vertical" size="middle" style={{ width: "100%" }}><Image width="100%" src={detailAsset.url} alt={detailAsset.alt || detailAsset.originalName} /><Typography.Text strong>{detailAsset.originalName}</Typography.Text><Typography.Text type="secondary">{detailAsset.url}</Typography.Text><Space wrap>{detailAsset.tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}</Space><Button icon={<Copy size={14} />} onClick={() => copyUrl(detailAsset)}>复制 URL</Button></Space>}
+      </Modal>
+    </Flex>
+  );
 }

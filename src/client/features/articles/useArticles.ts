@@ -33,14 +33,16 @@ export function useArticles() {
     articleApi.get(article.id).then((result) => setSelected(result.data)).catch((reason: unknown) => setNotice(reason instanceof Error ? reason.message : "加载文章详情失败"));
   }, []);
 
-  const archive = useCallback(() => {
-    if (!selected) return;
-    articleApi.archive(selected.id).then(() => { setNotice("文章已归档"); setSelected(undefined); load(); }).catch((reason: unknown) => setNotice(reason instanceof Error ? reason.message : "归档失败"));
+  const archive = useCallback((articleId?: string) => {
+    const targetId = articleId ?? selected?.id;
+    if (!targetId) return;
+    articleApi.archive(targetId).then(() => { setNotice("文章已归档"); if (selected?.id === targetId) setSelected(undefined); load(); }).catch((reason: unknown) => setNotice(reason instanceof Error ? reason.message : "归档失败"));
   }, [load, selected]);
 
-  const restore = useCallback(() => {
-    if (!selected) return;
-    articleApi.restore(selected.id).then(() => { setNotice("文章已恢复"); setSelected(undefined); load(); }).catch((reason: unknown) => setNotice(reason instanceof Error ? reason.message : "恢复失败"));
+  const restore = useCallback((articleId?: string) => {
+    const targetId = articleId ?? selected?.id;
+    if (!targetId) return;
+    articleApi.restore(targetId).then(() => { setNotice("文章已恢复"); if (selected?.id === targetId) setSelected(undefined); load(); }).catch((reason: unknown) => setNotice(reason instanceof Error ? reason.message : "恢复失败"));
   }, [load, selected]);
 
   const createDraft = useCallback(() => {

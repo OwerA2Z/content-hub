@@ -39,6 +39,7 @@ class TaskData(TypedDict, total=False):
     createdAt: str
     completedAt: str | None
     branch: str | None
+    branch_metadata_version: int
     base_branch: str | None
     worktree_path: str | None
     commit: str | None

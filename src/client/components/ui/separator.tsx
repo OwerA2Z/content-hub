@@ -1,5 +1,6 @@
-import * as React from "react";
-import * as SeparatorPrimitive from "@radix-ui/react-separator";
-import { cn } from "../../lib/utils";
+import { Divider } from "antd";
+import type * as React from "react";
 
-export function Separator({ className, orientation = "horizontal", decorative = true, ...props }: React.ComponentProps<typeof SeparatorPrimitive.Root>) { return <SeparatorPrimitive.Root decorative={decorative} orientation={orientation} className={cn("shrink-0 bg-border", orientation === "horizontal" ? "h-px w-full" : "h-full w-px", className)} {...props} />; }
+export function Separator({ className, orientation = "horizontal", ...props }: React.HTMLAttributes<HTMLDivElement> & { orientation?: "horizontal" | "vertical" }) {
+  return <Divider className={className} type={orientation === "vertical" ? "vertical" : "horizontal"} {...props} />;
+}

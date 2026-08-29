@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Checkbox as AntCheckbox } from "antd";
 import { Check, KeyRound, Pencil, Plus, X } from "lucide-react";
 import { adminTokenApi } from "../../lib/api/admin-tokens";
 import type { TokenInfo } from "../../lib/api/types";
@@ -11,7 +12,7 @@ import { Input } from "../../components/ui/input";
 function ScopeCheckboxes({ scopes, onToggle }: { scopes: TokenScope[]; onToggle: (scope: TokenScope) => void }) {
   return <div className="grid gap-3 sm:grid-cols-2">
     {TOKEN_SCOPES.map((scope) => <label className="flex items-center gap-2 text-sm text-muted-foreground" key={scope}>
-      <input type="checkbox" checked={scopes.includes(scope)} onChange={() => onToggle(scope)} />
+      <AntCheckbox checked={scopes.includes(scope)} onChange={() => onToggle(scope)} />
       {TOKEN_SCOPE_LABELS[scope]}
     </label>)}
   </div>;

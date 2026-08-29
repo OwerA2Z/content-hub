@@ -164,10 +164,12 @@ POST /api/v1/candidate-pools/daily/candidates/:id/accept
 ```text
 GET  /api/v1/admin/tokens
 POST /api/v1/admin/tokens
+PATCH /api/v1/admin/tokens/:id
 POST /api/v1/admin/tokens/:id/revoke
 ```
 
 创建 Token 时提交 `{ "name": "AI助手", "scopes": ["articles:read", "planning:read", "dedup:check"] }`。Token 明文只在创建响应中返回一次，数据库只保存 hash。
+编辑权限时提交 `{ "scopes": ["articles:read", "planning:read"] }`，仅更新权限，不会生成新的 Token 明文。
 
 返回内容包括战略目标、系列上下文、标题方向、核心问题、必须覆盖、必须避免、创新要求和相关历史文章摘要。生成前仍应调用防重复检测接口。
 

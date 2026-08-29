@@ -12,6 +12,19 @@ describe("Token 权限管理", () => {
     expect((await store.list())[0]?.prefix).toBe(created.info.prefix);
     expect(await store.revoke(created.info.id)).toBe(true);
     expect(await store.verify(created.secret, ["articles:read"])).toBe(false);
+    expect(await store.updateScopes(created.info.id, ["articles:write"])).toBeUndefined();
     await expect(store.create("非法权限", ["unknown:scope" as never])).rejects.toThrow("未知权限");
+  });
+
+  it("编辑 Token 权限后立即按新 scope 校验", async () => {
+    const store = new MemoryTokenStore();
+    const created = await store.create("可编辑", ["articles:read"]);
+    const updated = await store.updateScopes(created.info.id, ["articles:write", "dedup:check"]);
+    expect(updated?.scopes).toEqual(["articles:write", "dedup:check"]);
+    expect(updated?.prefix).toBe(created.info.prefix);
+    expect(await store.verify(created.secret, ["articles:read"])).toBe(false);
+    expect(await store.verify(created.secret, ["articles:write"])).toBe(true);
+    await expect(store.updateScopes(created.info.id, [])).rejects.toThrow("至少需要一个有效权限");
+    await expect(store.updateScopes("missing", ["articles:read"])).resolves.toBeUndefined();
   });
 });

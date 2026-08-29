@@ -22,12 +22,13 @@ export function normalizeScopes(scopes: readonly string[]) {
   return unique as TokenScope[];
 }
 
-export interface TokenStore { list(): Promise<TokenInfo[]>; create(name: string, scopes: readonly TokenScope[]): Promise<CreatedToken>; revoke(id: string): Promise<boolean>; verify(secret: string, requiredScopes: readonly TokenScope[]): Promise<boolean>; }
+export interface TokenStore { list(): Promise<TokenInfo[]>; create(name: string, scopes: readonly TokenScope[]): Promise<CreatedToken>; updateScopes(id: string, scopes: readonly TokenScope[]): Promise<TokenInfo | undefined>; revoke(id: string): Promise<boolean>; verify(secret: string, requiredScopes: readonly TokenScope[]): Promise<boolean>; }
 
 export class MemoryTokenStore implements TokenStore {
   private tokens = new Map<string, { info: TokenInfo; hash: string }>();
   async list() { return [...this.tokens.values()].map((item) => item.info).sort((a, b) => b.createdAt.localeCompare(a.createdAt)); }
   async create(name: string, scopes: readonly TokenScope[]) { const secret = randomBytes(32).toString("base64url"); const info: TokenInfo = { id: randomUUID(), name, scopes: normalizeScopes(scopes), prefix: secret.slice(0, 8), createdAt: now() }; this.tokens.set(info.id, { info, hash: hash(secret) }); return { info, secret }; }
+  async updateScopes(id: string, scopes: readonly TokenScope[]) { const normalized = normalizeScopes(scopes); const item = this.tokens.get(id); if (!item || item.info.revokedAt) return undefined; item.info.scopes = normalized; return item.info; }
   async revoke(id: string) { const item = this.tokens.get(id); if (!item || item.info.revokedAt) return false; item.info.revokedAt = now(); return true; }
   async verify(secret: string, requiredScopes: readonly TokenScope[]) { const value = hash(secret); return [...this.tokens.values()].some((item) => !item.info.revokedAt && item.hash === value && requiredScopes.every((scope) => item.info.scopes.includes(scope))); }
 }
@@ -36,6 +37,7 @@ class PgTokenStore implements TokenStore {
   constructor(private readonly pool: Pool) {}
   async list() { const result = await this.pool.query<TokenInfo>("SELECT id,name,scopes,token_prefix AS \"prefix\",created_at AS \"createdAt\",revoked_at AS \"revokedAt\" FROM api_tokens ORDER BY created_at DESC"); return result.rows.map((row) => ({ ...row, scopes: normalizeScopes(row.scopes) })); }
   async create(name: string, scopes: readonly TokenScope[]) { const secret = randomBytes(32).toString("base64url"); const info: TokenInfo = { id: randomUUID(), name, scopes: normalizeScopes(scopes), prefix: secret.slice(0, 8), createdAt: now() }; const result = await this.pool.query<TokenInfo>("INSERT INTO api_tokens (id,name,scopes,token_hash,token_prefix) VALUES ($1,$2,$3::jsonb,$4,$5) RETURNING id,name,scopes,token_prefix AS \"prefix\",created_at AS \"createdAt\",revoked_at AS \"revokedAt\"", [info.id,name,JSON.stringify(info.scopes),hash(secret),info.prefix]); return { info: { ...result.rows[0], scopes: normalizeScopes(result.rows[0].scopes) }, secret }; }
+  async updateScopes(id: string, scopes: readonly TokenScope[]) { const normalized = normalizeScopes(scopes); const result = await this.pool.query<TokenInfo>("UPDATE api_tokens SET scopes=$2::jsonb WHERE id=$1 AND revoked_at IS NULL RETURNING id,name,scopes,token_prefix AS \"prefix\",created_at AS \"createdAt\",revoked_at AS \"revokedAt\"", [id, JSON.stringify(normalized)]); const row = result.rows[0]; return row ? { ...row, scopes: normalizeScopes(row.scopes) } : undefined; }
   async revoke(id: string) { const result = await this.pool.query("UPDATE api_tokens SET revoked_at=now() WHERE id=$1 AND revoked_at IS NULL", [id]); return result.rowCount === 1; }
   async verify(secret: string, requiredScopes: readonly TokenScope[]) { const result = await this.pool.query<{ allowed: boolean }>("SELECT scopes @> $2::jsonb AS allowed FROM api_tokens WHERE token_hash=$1 AND revoked_at IS NULL LIMIT 1", [hash(secret), JSON.stringify(requiredScopes)]); return result.rows[0]?.allowed === true; }
 }

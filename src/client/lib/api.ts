@@ -20,6 +20,7 @@ export const api = {
   retry: articleApi.retry,
   getAiIntegration: integrationApi.getAi,
   createToken: adminTokenApi.create,
+  updateTokenScopes: adminTokenApi.updateScopes,
   revokeToken: adminTokenApi.revoke,
   ...planningApi,
 };

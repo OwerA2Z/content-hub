@@ -4,6 +4,7 @@ import { app } from "../src/server/app";
 import { repository } from "../src/server/db/repository";
 import { contentPlanningStore } from "../src/server/content-planning";
 import { createChannelsRouter } from "../src/server/routes/channels";
+import { TOKEN_SCOPES } from "../src/shared/scopes";
 import { tokenStore } from "../src/server/tokens";
 import { candidatePoolStore } from "../src/server/candidate-pools";
 
@@ -20,6 +21,31 @@ async function baseUrl() {
 }
 
 describe("HTTP API", () => {
+  it("Token 创建和编辑支持全部权限", async () => {
+    const url = await baseUrl();
+    // 通过真实初始化接口获取管理员会话，覆盖表单提交到后端校验的完整路径。
+    const setup = await fetch(`${url}/api/v1/setup/initialize`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "token-admin", password: "test-admin-password" }),
+    });
+    expect(setup.status).toBe(201);
+    const cookie = setup.headers.get("set-cookie")!.split(";")[0];
+    const headers = { cookie, "content-type": "application/json" };
+    const created = await fetch(`${url}/api/v1/admin/tokens`, {
+      method: "POST", headers,
+      body: JSON.stringify({ name: "全部权限", scopes: TOKEN_SCOPES }),
+    });
+    expect(created.status).toBe(201);
+    const { data } = await created.json() as { data: { info: { id: string; scopes: string[] } } };
+    expect(data.info.scopes).toEqual([...TOKEN_SCOPES]);
+    const updated = await fetch(`${url}/api/v1/admin/tokens/${data.info.id}`, {
+      method: "PATCH", headers, body: JSON.stringify({ scopes: TOKEN_SCOPES }),
+    });
+    expect(updated.status).toBe(200);
+    expect((await updated.json()).data.scopes).toEqual([...TOKEN_SCOPES]);
+  });
+
   it("微信公众号重试路由优先于通用 action 路由", () => {
     const stack = (createChannelsRouter() as unknown as { stack: Array<{ route?: { path: string } }> }).stack;
     const paths = stack.flatMap((layer) => layer.route?.path ? [layer.route.path] : []);

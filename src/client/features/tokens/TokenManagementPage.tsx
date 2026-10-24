@@ -48,7 +48,7 @@ export function TokenManagementPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [createForm] = Form.useForm<{ name: string }>();
 
-  // 列表请求集中处理 loading 和错误提示，创建、编辑、撤销成功后复用同一入口刷新数据。
+  // 列表请求集中处理 loading 和错误提示，创建、编辑、撤销、删除成功后复用同一入口刷新数据。
   const load = () => {
     setLoading(true);
     adminTokenApi
@@ -123,6 +123,20 @@ export function TokenManagementPage() {
       .finally(() => setActionLoading(false));
   };
 
+  // 删除成功后关闭对应详情并刷新列表，避免继续展示已清理的记录。
+  const deleteRevoked = (id: string) => {
+    setActionLoading(true);
+    return adminTokenApi
+      .deleteRevoked(id)
+      .then(() => {
+        setNotice("Token 已删除");
+        if (detailToken?.id === id) setDetailToken(undefined);
+        load();
+      })
+      .catch(() => setNotice("删除 Token 失败"))
+      .finally(() => setActionLoading(false));
+  };
+
   // 搜索仅作用于当前列表，不改变服务端数据和原有 API 查询参数。
   const filteredTokens = tokens.filter((token) => {
     const normalized = keyword.trim().toLowerCase();
@@ -177,6 +191,11 @@ export function TokenManagementPage() {
           <Button type="link" onClick={() => setDetailToken(token)}>
             详情
           </Button>
+          {token.revokedAt && (
+            <Popconfirm title="确认删除此 Token？" description="将永久删除这条已撤销的记录，操作审计仍会保留。" onConfirm={() => deleteRevoked(token.id)}>
+              <Button type="link" danger loading={actionLoading}>删除</Button>
+            </Popconfirm>
+          )}
           {!token.revokedAt && (
             <>
               <Button type="link" icon={<Pencil size={14} />} onClick={() => startEditing(token)}>
@@ -200,7 +219,7 @@ export function TokenManagementPage() {
         <div>
           <Typography.Text type="secondary">ACCESS CONTROL</Typography.Text>
           <Typography.Title level={2}>Token 管理</Typography.Title>
-          <Typography.Paragraph type="secondary">统一管理外部系统访问凭证，支持按 Scope 编辑权限或撤销 Token。</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">统一管理外部系统访问凭证，支持按 Scope 编辑权限、撤销 Token，以及删除已撤销记录。</Typography.Paragraph>
         </div>
         <Button type="primary" icon={<Plus size={16} />} onClick={() => setCreateOpen(true)}>
           新建 Token

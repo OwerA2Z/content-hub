@@ -6,5 +6,6 @@ export const adminTokenApi = {
   list: () => request<{ data: TokenInfo[] }>("/api/v1/admin/tokens"),
   create: (name: string, scopes: readonly TokenScope[]) => request<{ data: CreatedToken }>("/api/v1/admin/tokens", { method: "POST", body: JSON.stringify({ name, scopes }) }),
   updateScopes: (id: string, scopes: readonly TokenScope[]) => request<{ data: TokenInfo }>(`/api/v1/admin/tokens/${id}`, { method: "PATCH", body: JSON.stringify({ scopes }) }),
+  deleteRevoked: (id: string) => request<{ data: { deleted: boolean } }>(`/api/v1/admin/tokens/${id}`, { method: "DELETE" }),
   revoke: (id: string) => request<{ data: { revoked: boolean } }>(`/api/v1/admin/tokens/${id}/revoke`, { method: "POST" }),
 };

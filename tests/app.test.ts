@@ -21,7 +21,7 @@ async function baseUrl() {
 }
 
 describe("HTTP API", () => {
-  it("Token 创建和编辑支持全部权限", async () => {
+  it("Token 支持全部权限，且仅撤销后可删除", async () => {
     const url = await baseUrl();
     // 通过真实初始化接口获取管理员会话，覆盖表单提交到后端校验的完整路径。
     const setup = await fetch(`${url}/api/v1/setup/initialize`, {
@@ -44,6 +44,17 @@ describe("HTTP API", () => {
     });
     expect(updated.status).toBe(200);
     expect((await updated.json()).data.scopes).toEqual([...TOKEN_SCOPES]);
+    // 覆盖管理员鉴权和撤销前后的删除边界，避免仅靠页面隐藏按钮限制操作。
+    const tokenUrl = `${url}/api/v1/admin/tokens/${data.info.id}`;
+    expect((await fetch(tokenUrl, { method: "DELETE" })).status).toBe(401);
+    expect((await fetch(tokenUrl, { method: "DELETE", headers })).status).toBe(404);
+    expect((await fetch(`${tokenUrl}/revoke`, { method: "POST", headers })).status).toBe(200);
+    const deleted = await fetch(tokenUrl, { method: "DELETE", headers });
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({ data: { deleted: true } });
+    expect((await fetch(tokenUrl, { method: "DELETE", headers })).status).toBe(404);
+    const listed = await fetch(`${url}/api/v1/admin/tokens`, { headers });
+    expect((await listed.json()).data.some((token: { id: string }) => token.id === data.info.id)).toBe(false);
   });
 
   it("微信公众号重试路由优先于通用 action 路由", () => {

@@ -16,6 +16,19 @@ describe("Token 权限管理", () => {
     await expect(store.create("非法权限", ["unknown:scope" as never])).rejects.toThrow("未知权限");
   });
 
+  it("仅允许删除已撤销记录，删除后凭证仍然无效", async () => {
+    const store = new MemoryTokenStore();
+    const created = await store.create("待清理", ["articles:read"]);
+    expect(await store.deleteRevoked(created.info.id)).toBe(false);
+    expect(await store.verify(created.secret, ["articles:read"])).toBe(true);
+    await store.revoke(created.info.id);
+    expect(await store.deleteRevoked(created.info.id)).toBe(true);
+    expect(await store.list()).toEqual([]);
+    expect(await store.verify(created.secret, ["articles:read"])).toBe(false);
+    expect(await store.deleteRevoked(created.info.id)).toBe(false);
+    expect(await store.deleteRevoked("missing")).toBe(false);
+  });
+
   it("编辑 Token 权限后立即按新 scope 校验", async () => {
     const store = new MemoryTokenStore();
     const created = await store.create("可编辑", ["articles:read"]);

@@ -1,5 +1,5 @@
 {
-  "name": "wechat-article-platform",
+  "name": "content-hub",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -19,6 +19,7 @@
     "express": "latest",
     "lucide-react": "^1.34.0",
     "multer": "^2.2.0",
+    "parse5": "^8.1.1",
     "pg": "latest",
     "react": "latest",
     "react-dom": "latest",

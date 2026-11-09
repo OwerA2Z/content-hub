@@ -70,3 +70,26 @@ Questions to answer:
 - **正常与边界用例**：已撤销可删除并从列表消失；启用中不能删除且仍可验证；删除后原密钥仍无效。
 - **测试**：`tests/tokens.test.ts` 覆盖存储状态及验证结果；`tests/app.test.ts` 覆盖鉴权、删除前后状态和列表清理。
 - **错误与正确写法**：不要仅在 UI 隐藏删除入口或先查再无条件删除；PostgreSQL 使用 `DELETE FROM api_tokens WHERE id=$1 AND revoked_at IS NOT NULL` 原子限制状态，内存实现保持一致。
+
+## 微信公众号配置与草稿同步契约
+
+### 适用范围
+修改公众号配置、凭证读取、连接测试或草稿上传时适用。
+
+### 接口签名
+`GET/PUT /api/v1/channels/wechat/settings`；`POST /api/v1/channels/wechat/test`，仅 `requireAdminSession`。
+
+### 数据与存储契约
+PUT 接收 `{ appId, appSecret? }`；GET/PUT 仅返回 `{ data: { appId, hasSecret, source } }`。页面配置优先于环境变量。AES-256-GCM 原子持久化至 `MEDIA_ROOT/.private/wechat.json`，文件权限 0600；scrypt 从稳定的 `SESSION_SECRET` 派生密钥，不输出密钥或 access_token。
+
+### 校验与错误
+无会话（包括普通 Token）返回 401；AppID 格式不符、首次缺 Secret、更换 AppID 不带 Secret 返回 400。无法解密返回 503，不静默回退另一个公众号。测试失败返回 400、`WECHAT_CONNECTION_FAILED`，仅保留错误码，不透传微信原始错误内容。
+
+### 正常与边界用例
+同账号 Secret 留空保留；凭证变化不复用旧 token；连接测试绕过缓存。正文图片走 `media/uploadimg`，封面走永久素材；无凭证时直接 Provider 调用也须失败，不得模拟成功。详情轮询串行执行，切换/关闭使旧请求失效，任务完成前先写文章状态。
+
+### 必需测试
+`tests/wechat-settings.test.ts`：加密、重建实例、留空保留、换号校验、环境变量回退、错密钥。`tests/wechat-settings-http.test.ts`：鉴权、响应脱敏、连接结果。`tests/provider.test.ts`：图片转存去重、失败不创建草稿、内网拒绝、无凭证拒绝。
+
+### 错误与正确写法
+错误：读取接口返回 Secret；只隐藏上传按钮；把外部正文图片直接传给微信。正确：仅返回 hasSecret，常驻入口解释配置要求，在服务端转存图片后替换发送副本，失败明确终止。

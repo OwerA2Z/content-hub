@@ -11,8 +11,9 @@ export async function processChannelOperation(operationId: string, articleId: st
     const existingPublishId = action === "publish" ? existingOperation?.externalId : undefined;
     const result = action === "draft" ? await wechatProvider.createDraft(article) : { externalId: existingPublishId ?? (await wechatProvider.publish(article, draftId)).externalId };
     if (action === "draft") {
-      await repository.completeOperation(operationId, "succeeded", { externalId: result.externalId });
+      // 先更新文章，再标记任务完成，确保前端看到完成状态时详情已可读取。
       await repository.updateStatus(articleId, "draft_ready");
+      await repository.completeOperation(operationId, "succeeded", { externalId: result.externalId });
       return;
     }
     await repository.setOperationExternalId(operationId, result.externalId);
@@ -28,8 +29,8 @@ export async function processChannelOperation(operationId: string, articleId: st
     // 发布成功后异步重评估当天候选，避免候选池阻塞微信公众号发布响应。
     void candidatePoolStore.recheck().catch(() => undefined);
   } catch (error) {
-    await repository.completeOperation(operationId, "failed", { errorMessage: error instanceof Error ? error.message : "渠道操作失败" });
     await repository.updateStatus(articleId, "sync_failed");
+    await repository.completeOperation(operationId, "failed", { errorMessage: error instanceof Error ? error.message : "渠道操作失败" });
     await repository.recordAudit({ action: `wechat.${action}.failed`, actorType: "system", articleId, operationId, success: false });
   }
 }

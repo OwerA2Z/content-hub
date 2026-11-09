@@ -36,13 +36,15 @@ SESSION_SECRET=随机的会话签名密钥
 API_TOKEN_SCOPES=articles:read,articles:write,planning:read,dedup:check,operations:read
 ```
 
-如果要接入微信公众号，再配置：
+可以在后台“微信公众号”页面保存 AppID 和 AppSecret，无需重启；未保存页面配置时，也可通过环境变量接入微信公众号：
 
 ```env
 WECHAT_APP_ID=公众号AppID
 WECHAT_APP_SECRET=公众号AppSecret
 WECHAT_ENABLE_PUBLISH=false
 ```
+
+页面配置加密保存在 `MEDIA_ROOT/.private/wechat.json`，沿用 `media_data` 持久化卷。请一并备份持久化卷及稳定的 `SESSION_SECRET`；更换该值会导致原配置无法解密。后台生产访问应启用 HTTPS。
 
 只有确认公众号具备发布权限后，才将 `WECHAT_ENABLE_PUBLISH` 改为 `true`。
 

@@ -1,5 +1,25 @@
-import { describe, expect, it } from "vitest";
-import { MemoryRepository } from "../src/server/db/repository";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRepository, PgRepository } from "../src/server/db/repository";
+
+// 在构造适配器之前替换 Pool，连初始化 SELECT 1 也不访问真实数据库。
+const { poolQuery } = vi.hoisted(() => ({ poolQuery: vi.fn() }));
+vi.mock("pg", () => ({ Pool: class { query = poolQuery; } }));
+
+describe("PgRepository.updateStatus", () => {
+  beforeEach(() => poolQuery.mockReset().mockResolvedValue({ rows: [] }));
+  it.each(["archived", "uploaded", "draft_ready", "publish_pending", "published", "sync_failed"] as const)(
+    "%s 使用独立布尔参数控制归档时间",
+    async (status) => {
+      const repository = new PgRepository("postgresql://mock-only");
+      await expect(repository.updateStatus("article-1", status)).resolves.toBeUndefined();
+      expect(poolQuery).toHaveBeenCalledTimes(2);
+      expect(poolQuery).toHaveBeenLastCalledWith(
+        "UPDATE articles SET status = $2, updated_at = now(), archived_at = CASE WHEN $3 THEN now() ELSE NULL END WHERE id = $1 RETURNING *",
+        ["article-1", status, status === "archived"],
+      );
+    },
+  );
+});
 
 describe("MemoryRepository", () => {
   it("按 source + externalId 实现上传幂等", async () => {

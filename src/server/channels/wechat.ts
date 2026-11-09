@@ -18,7 +18,7 @@ export interface ChannelProvider {
   getPublishStatus(publishId: string): Promise<"pending" | "succeeded" | "failed">;
 }
 
-class WechatApiError extends Error {
+export class WechatApiError extends Error {
   constructor(public readonly code: number, message: string) {
     super(message);
     this.name = "WechatApiError";

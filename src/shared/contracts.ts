@@ -140,3 +140,6 @@ export interface ApiErrorBody {
     details?: unknown;
   };
 }
+
+/** 公众号配置只返回脱敏状态，无法解密时引导管理员完整重填。 */
+export interface WechatSettingsInfo { appId: string; hasSecret: boolean; source: "saved" | "environment" | "none" | "unreadable"; }

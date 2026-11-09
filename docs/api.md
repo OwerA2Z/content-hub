@@ -186,7 +186,11 @@ POST /api/v1/articles/:id/wechat/retry
 ```
 
 接口立即返回 operation ID，使用 `GET /api/v1/operations/:id` 查询结果。发布需要先获得草稿 ID，并且公众号具备发布权限。
-创建真实微信公众号草稿时，文章必须提供有效的 `coverAssetId`，或公网 HTTP(S) 图片地址 `coverUrl` / `images[0]`。正文图片先转存到微信，仅支持公网 JPG/PNG 且单张小于 1MB；下载、格式或微信接口错误会使任务失败。缺少凭证时不生成模拟成功结果。
+创建真实微信公众号草稿时，文章必须提供有效的 `coverAssetId`，或 `coverUrl` / `images[0]`（本站素材地址或公网 HTTP(S) 地址）。正文图片先转存到微信，仅支持 JPG/PNG 且单张小于 1MB；下载、格式或微信接口错误会使任务失败。缺少凭证时不生成模拟成功结果。
+
+本站素材图片支持 `/media/assets/{id}/content` 或与 `PUBLIC_BASE_URL` 同源的绝对地址，正文及封面均检查素材存在且 active 后读取本地文件，不进行 HTTP 下载；其他相对或无效地址返回中文错误。正文按魔数识别 JPEG/PNG，封面还支持 GIF/WebP；响应头缺失或为 `application/octet-stream` 不影响合法图片上传，非法魔数被拒绝。封面最大 10MB。
+
+access_token 在进程内按 AppID + AppSecret 共享缓存，同凭证并发获取合并为一次请求；测试连接忽略已完成缓存并强制刷新，仍使用现有 token 接口。
 
 ### 公众号接入配置（仅管理员会话）
 
@@ -196,7 +200,7 @@ PUT  /api/v1/channels/wechat/settings
 POST /api/v1/channels/wechat/test
 ```
 
-保存请求为 `{ "appId": "wx1234567890123456", "appSecret": "填写公众号密钥" }`。AppID 为 wx 开头的 18 位字符；首次保存或更换 AppID 须提交 Secret，同一 AppID 的 Secret 留空或省略则保留。GET/PUT 返回 `{ "data": { "appId": "wx1234567890123456", "hasSecret": true, "source": "saved" } }`，不返回密钥。source 也可能为 `environment` 或 `none`。保存立即生效，优先于环境变量。
+保存请求为 `{ "appId": "wx1234567890123456", "appSecret": "填写公众号密钥" }`。AppID 为 wx 开头的 18 位字符；首次保存或更换 AppID 须提交 Secret，同一 AppID 的 Secret 留空或省略则保留。GET/PUT 返回 `{ "data": { "appId": "wx1234567890123456", "hasSecret": true, "source": "saved" } }`，不返回密钥。source 也可能为 `environment`、`none` 或 `unreadable`。无法解密时 GET 返回 200 和 `{ "data": { "appId": "", "hasSecret": false, "source": "unreadable" } }`，capabilities 返回 200、`draft/publish=false` 及重填原因，不回退环境变量。此时 PUT 必须同时提供有效 AppID 和新的非空 AppSecret，否则返回 400；成功后覆盖旧密文。保存立即生效，优先于环境变量。
 
 测试接口无请求体，验证已保存或环境变量提供的凭证，成功返回 `{ "data": { "connected": true } }`；失败返回 400 和 `WECHAT_CONNECTION_FAILED`。连接成功不代表草稿/发布权限可用。以上接口不允许普通 API Token 访问，均设置 `Cache-Control: no-store`。
 

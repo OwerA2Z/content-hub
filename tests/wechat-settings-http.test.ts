@@ -22,7 +22,7 @@ describe("公众号配置管理员接口", () => {
     vi.spyOn(wechatSettings, "info").mockImplementation(() => store.info());
     vi.spyOn(wechatSettings, "save").mockImplementation((input) => store.save(input));
     server = createServer(app);
-    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve, reject) => { server!.once("error", reject); server!.listen(0, "127.0.0.1", resolve); });
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("测试服务器未监听");
     const url = `http://127.0.0.1:${address.port}/api/v1`;
@@ -41,6 +41,25 @@ describe("公众号配置管理员接口", () => {
     const info = await fetch(`${url}/channels/wechat/settings`, { headers });
     expect(info.headers.get("cache-control")).toBe("no-store");
     expect(await info.text()).not.toContain("http-test-secret");
+    // 使用新密钥重开旧文件，覆盖实际的解密失败与管理员恢复链路。
+    const wrongKey = new WechatSettingsStore(join(root, "settings.json"), "changed-session-secret", () => ({ appId: "env", appSecret: "fallback" }));
+    vi.mocked(wechatSettings.info).mockImplementation(() => wrongKey.info());
+    vi.mocked(wechatSettings.save).mockImplementation((input) => wrongKey.save(input));
+    vi.spyOn(wechatSettings, "credentials").mockImplementation(() => wrongKey.credentials());
+    const unreadable = await fetch(`${url}/channels/wechat/settings`, { headers });
+    expect(unreadable.status).toBe(200);
+    expect(await unreadable.json()).toEqual({ data: { appId: "", hasSecret: false, source: "unreadable" } });
+    const capabilities = await fetch(`${url}/channels/wechat/capabilities`, { headers });
+    expect(capabilities.status).toBe(200);
+    expect((await capabilities.json()).data).toMatchObject({ draft: false, publish: false, reason: expect.stringContaining("请重新填写凭证") });
+    for (const input of [{ appId: "wx1234567890123456" }, { appId: "wx1234567890123456", appSecret: "" }, { appSecret: "replacement" }]) {
+      expect((await fetch(`${url}/channels/wechat/settings`, { method: "PUT", headers, body: JSON.stringify(input) })).status).toBe(400);
+    }
+    const recovered = await fetch(`${url}/channels/wechat/settings`, { method: "PUT", headers, body: JSON.stringify({ appId: "wx1234567890123456", appSecret: "replacement" }) });
+    expect(recovered.status).toBe(200);
+    expect((await recovered.json()).data.source).toBe("saved");
+    expect((await wrongKey.credentials()).appSecret).toBe("replacement");
+    expect((await (await fetch(`${url}/channels/wechat/capabilities`, { headers })).json()).data.draft).toBe(true);
     const connection = vi.spyOn(wechatProvider, "testConnection").mockResolvedValue();
     expect((await fetch(`${url}/channels/wechat/test`, { method: "POST", headers })).status).toBe(200);
     connection.mockRejectedValue(Object.assign(new Error("sensitive-value"), { code: 40125 }));

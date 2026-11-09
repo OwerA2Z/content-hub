@@ -17,6 +17,7 @@ export function ChannelSettingsPage() {
 
   useEffect(() => {
     articleApi.wechatSettings().then(({ data }) => {
+      // unreadable 仍是可编辑状态，由页面提示完整重填，不将表单锁死在加载错误中。
       setSettings(data);
       form.setFieldsValue({ appId: data.appId });
     }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "加载配置失败"))
@@ -69,6 +70,7 @@ export function ChannelSettingsPage() {
       </div>
 
       <Card title="公众号接入配置" loading={loading}>
+        {settings?.source === "unreadable" && <Alert type="warning" showIcon message="公众号配置无法解密，请重新填写凭证" description="请同时填写 AppID 和新的 AppSecret，保存后将覆盖旧配置。" style={{ marginBottom: 16 }} />}
         <Form form={form} layout="vertical" onFinish={save} onValuesChange={() => setDirty(true)} disabled={Boolean(busy) || !settings} style={{ maxWidth: 560 }}>
           <Typography.Paragraph type="secondary">
             在微信公众平台获取开发者凭证，并将部署服务器的出口 IP 加入公众号 IP 白名单。
@@ -77,13 +79,13 @@ export function ChannelSettingsPage() {
           <Form.Item name="appId" label="AppID" rules={[{ required: true, message: "请输入 AppID" }, { pattern: /^wx[a-zA-Z0-9]{16}$/, message: "请输入 wx 开头的 18 位 AppID" }]}>
             <Input placeholder="wx…" autoComplete="off" />
           </Form.Item>
-          <Form.Item name="appSecret" label="AppSecret" extra={settings?.hasSecret ? "已配置密钥，留空保持不变；更换 AppID 时需填写新密钥。" : "首次配置必须填写。密钥保存后不回显。"} rules={[{ required: !settings?.hasSecret, whitespace: true, message: "请输入 AppSecret" }]}>
+          <Form.Item name="appSecret" label="AppSecret" extra={settings?.source === "unreadable" ? "旧配置无法读取，必须填写新的 AppSecret，不能留空沿用。" : settings?.hasSecret ? "已配置密钥，留空保持不变；更换 AppID 时需填写新密钥。" : "首次配置必须填写。密钥保存后不回显。"} rules={[{ required: !settings?.hasSecret, whitespace: true, message: "请输入 AppSecret" }]}>
             <Input.Password placeholder={settings?.hasSecret ? "已配置，留空不修改" : "请输入 AppSecret"} autoComplete="new-password" />
           </Form.Item>
           <Space wrap>
             <Button type="primary" htmlType="submit" loading={busy === "save"}>保存配置</Button>
             <Button onClick={test} loading={busy === "test"} disabled={dirty || !settings?.appId || !settings.hasSecret}>测试已保存连接</Button>
-            <Typography.Text type="secondary">{dirty ? "请先保存修改，再测试连接" : settings?.source === "saved" ? "使用页面保存的配置" : settings?.source === "environment" ? "当前使用环境变量配置" : "尚未配置"}</Typography.Text>
+            <Typography.Text type="secondary">{dirty ? "请先保存修改，再测试连接" : settings?.source === "saved" ? "使用页面保存的配置" : settings?.source === "environment" ? "当前使用环境变量配置" : settings?.source === "unreadable" ? "请重新填写凭证" : "尚未配置"}</Typography.Text>
           </Space>
         </Form>
       </Card>

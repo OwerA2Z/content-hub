@@ -28,6 +28,14 @@ describe("公众号配置存储", () => {
     await expect(reopened.save({ appId: "wx6543210987654321" })).rejects.toThrow("更换 AppID");
     const wrongKey = new WechatSettingsStore(filename, "another-key", () => ({ appId: "env", appSecret: "fallback" }));
     await expect(wrongKey.credentials()).rejects.toThrow("无法解密");
+    expect(await wrongKey.info()).toEqual({ appId: "", hasSecret: false, source: "unreadable" });
+    await expect(wrongKey.save({ appId: info.appId, appSecret: "" })).rejects.toThrow("同时填写");
+    await expect(wrongKey.save({ appId: "", appSecret: "replacement" })).rejects.toThrow("同时填写");
+    await wrongKey.save({ appId: info.appId, appSecret: "replacement" });
+    expect(await wrongKey.credentials()).toEqual({ appId: info.appId, appSecret: "replacement" });
+    expect((await wrongKey.info()).source).toBe("saved");
+    const recovered = new WechatSettingsStore(filename, "another-key", () => ({ appId: "", appSecret: "" }));
+    expect((await recovered.credentials()).appSecret).toBe("replacement");
   });
 
   it("未保存时回退环境变量，保存后优先页面配置", async () => {

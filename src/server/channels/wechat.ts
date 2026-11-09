@@ -7,7 +7,7 @@ import type { Article, ChannelCapabilities, Operation } from "../../shared/contr
 import { config } from "../config";
 import { mediaAssetRepository } from "../media-library";
 import { readMediaFile } from "../media-storage";
-import { wechatSettings, type WechatCredentials } from "../wechat-settings";
+import { isWechatConfigUnreadable, wechatSettings, type WechatCredentials } from "../wechat-settings";
 
 export interface ChannelResult { externalId: string; }
 
@@ -26,14 +26,21 @@ class WechatApiError extends Error {
   }
 }
 
+// 快照实例与单例共享缓存和进行中的请求，凭证不同绝不复用 token。
+const tokenCache = new Map<string, { value: string; expiresAt: number }>();
+const tokenRequests = new Map<string, Promise<string>>();
+
 /** 从有效配置读取凭证；凭证变化后不复用旧公众号的 token。 */
 export class WechatProvider implements ChannelProvider {
   constructor(private readonly downloadImage = downloadPublicImage, private readonly credentialsSnapshot?: WechatCredentials) {}
 
-  private accessToken?: { value: string; expiresAt: number; appId: string; appSecret: string };
-
   async getCapabilities(): Promise<ChannelCapabilities> {
-    const credentials = this.credentialsSnapshot ?? await wechatSettings.credentials();
+    let credentials: WechatCredentials;
+    try { credentials = this.credentialsSnapshot ?? await wechatSettings.credentials(); }
+    catch (error) {
+      if (!isWechatConfigUnreadable(error)) throw error;
+      return { provider: "wechat", draft: false, publish: false, reason: "公众号配置无法解密，请重新填写凭证（AppID 和新的 AppSecret）" };
+    }
     if (!credentials.appId || !credentials.appSecret) {
       return { provider: "wechat", draft: false, publish: false, reason: "未配置微信公众号服务端凭证" };
     }
@@ -87,16 +94,27 @@ export class WechatProvider implements ChannelProvider {
 
   private async getAccessToken(force = false) {
     const credentials = this.credentialsSnapshot ?? await wechatSettings.credentials();
-    if (!force && this.accessToken?.appId === credentials.appId && this.accessToken.appSecret === credentials.appSecret && this.accessToken.expiresAt > Date.now() + 60_000) return this.accessToken.value;
-    const url = new URL("/cgi-bin/token", config.WECHAT_API_BASE_URL);
-    url.searchParams.set("grant_type", "client_credential");
-    url.searchParams.set("appid", credentials.appId);
-    url.searchParams.set("secret", credentials.appSecret);
-    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-    const body = await response.json() as { access_token?: string; expires_in?: number; errcode?: number; errmsg?: string };
-    if (!response.ok || !body.access_token) throw new WechatApiError(body.errcode ?? response.status, "获取微信公众号 access_token 失败");
-    this.accessToken = { value: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 7_200) * 1_000, ...credentials };
-    return body.access_token;
+    const key = JSON.stringify([credentials.appId, credentials.appSecret]);
+    const cached = tokenCache.get(key);
+    // 强制测试忽略已完成缓存，但与同凭证正在进行的刷新合并，避免并发刷新互相失效。
+    const pending = tokenRequests.get(key);
+    if (pending) return pending;
+    if (!force && cached && cached.expiresAt > Date.now() + 60_000) return cached.value;
+    tokenCache.delete(key);
+    const request = (async () => {
+      const url = new URL("/cgi-bin/token", config.WECHAT_API_BASE_URL);
+      url.searchParams.set("grant_type", "client_credential");
+      url.searchParams.set("appid", credentials.appId);
+      url.searchParams.set("secret", credentials.appSecret);
+      const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      const body = await response.json() as { access_token?: string; expires_in?: number; errcode?: number };
+      if (!response.ok || !body.access_token) throw new WechatApiError(body.errcode ?? response.status, "获取微信公众号 access_token 失败");
+      tokenCache.set(key, { value: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 7_200) * 1_000 });
+      return body.access_token;
+    })();
+    tokenRequests.set(key, request);
+    try { return await request; }
+    finally { tokenRequests.delete(key); }
   }
 
   private async call<T>(path: string, init: RequestInit): Promise<T> {
@@ -113,12 +131,38 @@ export class WechatProvider implements ChannelProvider {
       const asset = await mediaAssetRepository.get(article.coverAssetId);
       if (!asset || asset.status !== "active") throw new Error("微信公众号草稿需要有效的封面素材");
       const bytes = await readMediaFile(asset.storageKey);
-      return this.uploadCoverBytes(bytes, asset.mimeType, asset.originalName);
+      return this.uploadCoverBytes(bytes, asset.originalName);
     }
     const urlValue = article.coverUrl ?? article.images[0];
     if (!urlValue) throw new Error("微信公众号草稿需要封面素材、coverUrl 或 images[0]");
-    const image = await this.downloadImage(urlValue, 10 * 1024 * 1024);
-    return this.uploadCoverBytes(image.bytes, image.contentType, "cover-image");
+    const image = await this.readImage(urlValue, 10 * 1024 * 1024);
+    return this.uploadCoverBytes(image.bytes, "cover-image");
+  }
+
+  private async readImage(value: string, maxBytes: number) {
+    // 只有素材库的根相对路径、或 PUBLIC_BASE_URL 同源素材 URL 才能读取本地文件。
+    let path: string | undefined;
+    if (value.startsWith("/media/assets/")) path = value;
+    else {
+      const url = parseImageUrl(value);
+      if (config.PUBLIC_BASE_URL && url.origin === new URL(config.PUBLIC_BASE_URL).origin && !url.username && !url.password) path = url.pathname;
+    }
+    const match = path?.match(/^\/media\/assets\/([^/?#]+)\/content$/);
+    let image: { bytes: Uint8Array; contentType: string };
+    if (match) {
+      let id: string;
+      try { id = decodeURIComponent(match[1]); }
+      catch { throw new Error("本站素材图片地址无效"); }
+      const asset = await mediaAssetRepository.get(id);
+      if (!asset || asset.status !== "active") throw new Error("图片素材不存在或已归档，请选择有效素材");
+      image = { bytes: await readMediaFile(asset.storageKey), contentType: asset.mimeType };
+    } else {
+      parseImageUrl(value);
+      image = await this.downloadImage(value, maxBytes);
+    }
+    if (image.bytes.byteLength > maxBytes) throw new Error(`图片超过大小限制（${maxBytes} 字节）`);
+    // 响应头可能缺失或为 octet-stream，以文件头为准，不信任 MIME 声明。
+    return { bytes: image.bytes, contentType: detectImageType(image.bytes) ?? "" };
   }
 
   private async uploadContentImages(html: string) {
@@ -132,10 +176,10 @@ export class WechatProvider implements ChannelProvider {
         if (!value) throw new Error("正文图片缺少地址，请补充后再上传");
         if (!uploaded.has(value)) {
           // 正文图片与封面接口不同，必须先转存为微信 URL；同一张图在本次任务内只传一次。
-          const image = await this.downloadImage(value, 1024 * 1024 - 1);
+          const image = await this.readImage(value, 1024 * 1024 - 1);
           if (!["image/jpeg", "image/png"].includes(image.contentType)) throw new Error("微信正文图片仅支持 JPG/PNG 且必须小于 1MB");
           const form = new FormData();
-          form.append("media", new Blob([image.bytes.buffer as ArrayBuffer], { type: image.contentType }), image.contentType === "image/png" ? "image.png" : "image.jpg");
+          form.append("media", new Blob([new Uint8Array(image.bytes).buffer as ArrayBuffer], { type: image.contentType }), image.contentType === "image/png" ? "image.png" : "image.jpg");
           const url = new URL("/cgi-bin/media/uploadimg", config.WECHAT_API_BASE_URL);
           url.searchParams.set("access_token", await this.getAccessToken());
           const response = await fetch(url, { method: "POST", body: form, signal: AbortSignal.timeout(20_000) });
@@ -153,7 +197,10 @@ export class WechatProvider implements ChannelProvider {
     return serialize(fragment);
   }
 
-  private async uploadCoverBytes(bytes: Uint8Array, contentType: string, filename: string) {
+  private async uploadCoverBytes(bytes: Uint8Array, filename: string) {
+    const contentType = detectImageType(bytes);
+    if (!contentType) throw new Error("微信封面图片仅支持有效的 JPG/PNG/GIF/WebP 图片");
+    if (bytes.byteLength > 10 * 1024 * 1024) throw new Error("封面图片不能超过 10MB");
     const form = new FormData();
     form.append("media", new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: contentType }), filename);
     const apiUrl = new URL("/cgi-bin/material/add_material", config.WECHAT_API_BASE_URL);
@@ -166,12 +213,26 @@ export class WechatProvider implements ChannelProvider {
   }
 }
 
+function parseImageUrl(value: string): URL {
+  try { return new URL(value); }
+  catch { throw new Error("图片地址无效：仅支持本站素材路径 /media/assets/{id}/content 或完整的公网 HTTP(S) 地址"); }
+}
+
+function detectImageType(bytes: Uint8Array): string | undefined {
+  const head = Buffer.from(bytes.subarray(0, 12));
+  if (head.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) return "image/png";
+  if (head.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return "image/jpeg";
+  if (["GIF87a", "GIF89a"].includes(head.subarray(0, 6).toString("ascii"))) return "image/gif";
+  if (head.subarray(0, 4).toString("ascii") === "RIFF" && head.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  return undefined;
+}
+
 const blockedAddresses = new BlockList();
 for (const [address, prefix] of [["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.168.0.0", 16], ["192.0.0.0", 24], ["198.18.0.0", 15], ["224.0.0.0", 3]] as const) blockedAddresses.addSubnet(address, prefix, "ipv4");
 
 /** 解析后固定目标 IP，禁止重定向，流式限额，避免正文图片下载成为内网访问入口。 */
 export async function downloadPublicImage(value: string, maxBytes: number) {
-  const url = new URL(value);
+  const url = parseImageUrl(value);
   if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("图片只允许使用不含凭证的公网 HTTP(S) 地址");
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
   const addresses = isIP(hostname) ? [{ address: hostname, family: isIP(hostname) }] : await dns.lookup(hostname, { all: true });

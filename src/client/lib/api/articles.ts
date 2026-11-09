@@ -1,7 +1,8 @@
 import { request } from "../http";
 import type { Article, Capabilities } from "./types";
 
-export interface WechatSettingsInfo { appId: string; hasSecret: boolean; source: "saved" | "environment" | "none"; }
+import type { WechatSettingsInfo } from "../../../shared/contracts";
+export type { WechatSettingsInfo } from "../../../shared/contracts";
 
 export const articleApi = {
   wechatSettings: () => request<{ data: WechatSettingsInfo }>("/api/v1/channels/wechat/settings"),

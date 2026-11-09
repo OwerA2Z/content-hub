@@ -38,15 +38,45 @@ export class WechatSettingsStore {
 
   async credentials() { return await this.saved() ?? this.fallback(); }
 
+  // 非密开关与凭证解耦，密钥变化或凭证损坏不会影响开关读写。
+  async options(): Promise<{ autoDraft: boolean }> {
+    let raw: string;
+    try { raw = await readFile(resolve(dirname(this.filename), "wechat-options.json"), "utf8"); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { autoDraft: false };
+      // 权限等读取错误仍须暴露，不能误当作配置内容损坏。
+      throw error;
+    }
+    try {
+      const value = JSON.parse(raw);
+      // 内容损坏时失败即关闭，避免误触发自动草稿；保存开关可原子覆盖修复。
+      return { autoDraft: typeof value?.autoDraft === "boolean" ? value.autoDraft : false };
+    } catch {
+      return { autoDraft: false };
+    }
+  }
+
+  async saveOptions(input: { autoDraft: boolean }) {
+    const filename = resolve(dirname(this.filename), "wechat-options.json");
+    await mkdir(dirname(filename), { recursive: true, mode: 0o700 });
+    const temporary = `${filename}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, JSON.stringify(input), { flag: "wx", mode: 0o600 });
+      await rename(temporary, filename);
+    } finally { await rm(temporary, { force: true }); }
+    return input;
+  }
+
   async info(): Promise<WechatSettingsInfo> {
+    const { autoDraft } = await this.options();
     let saved: WechatCredentials | undefined;
     try { saved = await this.saved(); }
     catch (error) {
       if (!isWechatConfigUnreadable(error)) throw error;
-      return { appId: "", hasSecret: false, source: "unreadable" };
+      return { autoDraft, appId: "", hasSecret: false, source: "unreadable" };
     }
     const value = saved ?? this.fallback();
-    return { appId: value.appId, hasSecret: Boolean(value.appSecret), source: saved ? "saved" : value.appId || value.appSecret ? "environment" : "none" };
+    return { autoDraft, appId: value.appId, hasSecret: Boolean(value.appSecret), source: saved ? "saved" : value.appId || value.appSecret ? "environment" : "none" };
   }
 
   save(input: { appId: string; appSecret?: string }) {

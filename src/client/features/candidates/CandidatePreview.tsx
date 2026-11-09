@@ -17,11 +17,19 @@ export function CandidatePreview({
   onOpenChange,
   onAccept,
   onNotice,
+  onUploadDraft,
+  uploadingId,
+  draftNotice,
+  acceptingId,
 }: {
   candidate?: ContentCandidate;
   onOpenChange: (open: boolean) => void;
   onAccept: (candidate: ContentCandidate) => void;
   onNotice: (message: string) => void;
+  onUploadDraft: (candidate: ContentCandidate) => void;
+  uploadingId?: string;
+  draftNotice?: string;
+  acceptingId?: string;
 }) {
   const copy = () => candidate && copyArticleContent(candidate.title, candidate.content);
 
@@ -32,18 +40,24 @@ export function CandidatePreview({
       onClose={() => onOpenChange(false)}
       width="min(100vw, 700px)"
       extra={
-        candidate &&
-        candidate.status !== "accepted" &&
-        candidate.status !== "stale" && (
-          <Button type="primary" onClick={() => onAccept(candidate)}>
-            接受并保存文章
-          </Button>
+        candidate && candidate.status !== "stale" && candidate.status !== "rejected" && (
+          <Space>
+            <Button loading={uploadingId === candidate.id} disabled={Boolean(uploadingId || acceptingId)}
+              onClick={() => onUploadDraft(candidate)}>上传草稿箱</Button>
+            {candidate.status !== "accepted" && (
+              <Button type="primary" loading={acceptingId === candidate.id}
+                disabled={Boolean(uploadingId || acceptingId)} onClick={() => onAccept(candidate)}>
+                接受并保存文章
+              </Button>
+            )}
+          </Space>
         )
       }
     >
       <Space direction="vertical" size="large" style={{ width: "100%" }}>
         {candidate && (
           <>
+            {draftNotice && <Alert type="info" showIcon message={draftNotice} />}
             <div>
               <Typography.Title level={3} style={{ margin: "0 0 8px 0" }}>
                 {candidate.title}

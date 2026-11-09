@@ -17,7 +17,7 @@ export function createAiRouter() {
     return key;
   };
   router.post("/ai/articles", requireAiScopes(["articles:write"]), async (req, res, next) => {
-    try { const result = await uploadArticle(req.body); return res.status(result.created ? 201 : 200).json({ data: { article: result.article, created: result.created, capabilities: result.capabilities } }); } catch (error) { return next(error); }
+    try { const result = await uploadArticle(req.body); return res.status(result.created ? 201 : 200).json({ data: { article: result.article, created: result.created, capabilities: result.capabilities, autoDraft: result.autoDraft } }); } catch (error) { return next(error); }
   });
   router.post("/ai/content-plan/strategies/:id/series", requireAiScopes(["planning:write"]), async (req, res, next) => {
     try {

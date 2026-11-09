@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Empty, Flex, List, Space, Spin, Tag, Typography } from "antd";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { candidateApi } from "../../lib/api/candidates";
 import type { CandidatePool, ContentCandidate } from "../../lib/api/types";
+import { useCandidateDraft } from "./useCandidateDraft";
 import { CandidatePreview } from "./CandidatePreview";
 
 const riskLabel = { low: "低风险", medium: "中风险", high: "高风险", exact: "完全重复" } as const;
@@ -17,21 +18,47 @@ export function CandidatePoolPage() {
   const [rechecking, setRechecking] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string>();
 
+  const mounted = useRef(true);
+  const loadRun = useRef(0);
   const load = () => {
+    // 采纳与任务完成都可能刷新，只接受最后一次请求，避免旧列表覆盖已采纳状态。
+    const run = ++loadRun.current;
+    const active = () => mounted.current && loadRun.current === run;
     setLoading(true);
     candidateApi
       .daily()
       .then((result) => {
+        if (!active()) return;
         setPool(result.data.pool);
+        setSelected((previous) => previous && result.data.candidates.find((item) => item.id === previous.id));
         setCandidates(result.data.candidates);
       })
-      .catch(() => setNotice("加载每日候选池失败"))
-      .finally(() => setLoading(false));
+      .catch(() => { if (active()) setNotice("加载每日候选池失败"); })
+      .finally(() => { if (active()) setLoading(false); });
   };
 
   useEffect(() => {
+    mounted.current = true;
     load();
+    return () => { mounted.current = false; };
   }, []);
+
+  const { uploadingId, uploadDraft, draftNotice } = useCandidateDraft({
+    onNotice: setNotice,
+    onComplete: load,
+    onAccepted: (candidateId, articleId) => {
+      // 只更新同一候选，关闭/切换后的预览不接收旧候选结果。
+      const markAccepted = (item: ContentCandidate): ContentCandidate =>
+        item.id === candidateId ? { ...item, status: "accepted", acceptedArticleId: articleId } : item;
+      setCandidates((items) => items.map(markAccepted));
+      setSelected((item) => item && markAccepted(item));
+      load();
+    },
+  });
+  const select = (candidate?: ContentCandidate) => {
+    // 预览选择不影响上传生命周期；结果在预览入口按 candidateId 过滤，避免串写。
+    setSelected(candidate);
+  };
 
   const recheck = () => {
     if (rechecking) return;
@@ -47,7 +74,7 @@ export function CandidatePoolPage() {
   };
 
   const accept = (candidate: ContentCandidate) => {
-    if (acceptingId) return;
+    if (acceptingId || uploadingId) return;
     setAcceptingId(candidate.id);
     candidateApi
       .accept(candidate.id)
@@ -107,15 +134,21 @@ export function CandidatePoolPage() {
               <List.Item
                 style={{ padding: "16px 0", borderBottom: "1px solid #f0f0f0" }}
                 actions={[
-                  <Button key="preview" onClick={() => setSelected(candidate)}>
+                  ...(candidate.status !== "stale" && candidate.status !== "rejected" ? [
+                    <Button key="draft" loading={uploadingId === candidate.id}
+                      disabled={Boolean(uploadingId || acceptingId)}
+                      onClick={() => void uploadDraft(candidate)}>上传草稿箱</Button>,
+                  ] : []),
+                  <Button key="preview" onClick={() => select(candidate)}>
                     预览全文
                   </Button>,
-                  ...(candidate.status !== "accepted" && candidate.status !== "stale"
+                  ...(candidate.status !== "accepted" && candidate.status !== "stale" && candidate.status !== "rejected"
                     ? [
                         <Button
                           key="accept"
                           type="primary"
                           loading={acceptingId === candidate.id}
+                          disabled={Boolean(uploadingId || acceptingId)}
                           onClick={() => accept(candidate)}
                         >
                           接受并保存文章
@@ -188,9 +221,13 @@ export function CandidatePoolPage() {
       <CandidatePreview
         candidate={selected}
         onOpenChange={(open) => {
-          if (!open) setSelected(undefined);
+          if (!open) select();
         }}
         onAccept={accept}
+        onUploadDraft={uploadDraft}
+        draftNotice={draftNotice?.candidateId === selected?.id ? draftNotice?.message : undefined}
+        uploadingId={uploadingId}
+        acceptingId={acceptingId}
         onNotice={setNotice}
       />
     </Space>

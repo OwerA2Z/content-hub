@@ -27,6 +27,19 @@ curl -X POST http://localhost:3000/api/v1/articles/upload \
 
 文章封面也可以引用素材库中的本地图片：先使用具备 `media:write` 权限的 Token 上传素材，再在文章请求中填写返回的 `coverAssetId`。需要读取或预览素材时再授予 `media:read`。素材 ID 与 `coverUrl` 可以同时保留，微信公众号草稿会优先使用素材文件。
 
+## 新文章自动上传草稿箱
+
+管理员会话可调用 `PUT /api/v1/channels/wechat/options`，请求 `{ "autoDraft": true }`，成功返回 `{ "data": { "autoDraft": true } }`。普通 Token 或未登录返回 401，非布尔值返回 400、`INVALID_WECHAT_OPTIONS`。响应使用 `Cache-Control: no-store`，修改记录 `wechat.options.update` 审计。无需 AppSecret；`GET /channels/wechat/settings` 带出当前 `autoDraft`，凭证为 unreadable 时仍可读写开关。开关文件缺失、JSON 损坏或 autoDraft 非布尔时按关闭处理，GET 不因内容损坏报错；重新保存开关可覆盖修复。权限等非 ENOENT 文件读取错误仍会抛出。
+
+`POST /articles/upload`、`POST /ai/articles` 和候选池采纳接口的 `data` 增加 `autoDraft`：
+
+- `{ "status": "disabled" }`：开关关闭（默认），不创建操作。
+- `{ "status": "not_new" }`：幂等命中旧文章，不补传。
+- `{ "status": "submitted", "operationId": "…" }`：已提交 draft 操作；使用 `GET /operations/:id` 轮询，需要 `operations:read` 权限。
+- `{ "status": "skipped", "code": "COVER_REQUIRED", "reason": "…" }`：文章入库成功，草稿跳过。其他错误码包括 `MEDIA_ASSET_UNAVAILABLE`、`CHANNEL_CAPABILITY_UNAVAILABLE`、`AUTO_DRAFT_ERROR`。
+
+跳过记录 `wechat.draft.auto_skipped:<CODE>` 审计（如 `wechat.draft.auto_skipped:COVER_REQUIRED`），actorType 为 system，actorId 保留触发入库的真实操作者（可为空）；完整原因仅在响应 autoDraft.reason 返回。提交记录 `wechat.draft.auto`，actorType 为 system。草稿异步失败由操作状态反映，不影响文章入库；不会自动发布。原上传字段校验仍有效，例如直接上传引用不存在的封面素材仍返回 400。
+
 ## 素材库
 
 素材库首版只支持 JPG、PNG、WebP 和 GIF，单张图片最大 10 MB。素材元数据保存在 PostgreSQL，图片文件保存在 `MEDIA_ROOT` 对应的本地持久化目录。
@@ -200,7 +213,7 @@ PUT  /api/v1/channels/wechat/settings
 POST /api/v1/channels/wechat/test
 ```
 
-保存请求为 `{ "appId": "wx1234567890123456", "appSecret": "填写公众号密钥" }`。AppID 为 wx 开头的 18 位字符；首次保存或更换 AppID 须提交 Secret，同一 AppID 的 Secret 留空或省略则保留。GET/PUT 返回 `{ "data": { "appId": "wx1234567890123456", "hasSecret": true, "source": "saved" } }`，不返回密钥。source 也可能为 `environment`、`none` 或 `unreadable`。无法解密时 GET 返回 200 和 `{ "data": { "appId": "", "hasSecret": false, "source": "unreadable" } }`，capabilities 返回 200、`draft/publish=false` 及重填原因，不回退环境变量。此时 PUT 必须同时提供有效 AppID 和新的非空 AppSecret，否则返回 400；成功后覆盖旧密文。保存立即生效，优先于环境变量。
+保存请求为 `{ "appId": "wx1234567890123456", "appSecret": "填写公众号密钥" }`。AppID 为 wx 开头的 18 位字符；首次保存或更换 AppID 须提交 Secret，同一 AppID 的 Secret 留空或省略则保留。GET/PUT 返回 `{ "data": { "appId": "wx1234567890123456", "hasSecret": true, "source": "saved", "autoDraft": false } }`，不返回密钥。source 也可能为 `environment`、`none` 或 `unreadable`。无法解密时 GET 返回 200 和 `{ "data": { "appId": "", "hasSecret": false, "source": "unreadable", "autoDraft": false } }`，capabilities 返回 200、`draft/publish=false` 及重填原因，不回退环境变量。此时 PUT 必须同时提供有效 AppID 和新的非空 AppSecret，否则返回 400；成功后覆盖旧密文。保存立即生效，优先于环境变量。
 
 测试接口无请求体，验证已保存或环境变量提供的凭证，成功返回 `{ "data": { "connected": true } }`；失败返回 400 和 `WECHAT_CONNECTION_FAILED`。连接成功不代表草稿/发布权限可用。以上接口不允许普通 API Token 访问，均设置 `Cache-Control: no-store`。
 

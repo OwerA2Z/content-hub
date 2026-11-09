@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Flex, Form, Input, Space, Tag, Typography } from "antd";
+import { Alert, Button, Card, Flex, Form, Input, Space, Switch, Tag, Typography } from "antd";
 import { Radio } from "lucide-react";
 import { articleApi, type WechatSettingsInfo } from "../../lib/api/articles";
 import type { Capabilities } from "../../lib/api/types";
@@ -13,6 +13,7 @@ export function ChannelSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"save" | "test">();
   const [notice, setNotice] = useState("");
+  const [optionsBusy, setOptionsBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -37,6 +38,21 @@ export function ChannelSettingsPage() {
       setCaps(result.data);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "保存失败"); }
     finally { setBusy(undefined); }
+  };
+
+  const toggleAutoDraft = async (autoDraft: boolean) => {
+    if (!settings) return;
+    const previous = settings.autoDraft;
+    setOptionsBusy(true); setError("");
+    setSettings((current) => current && { ...current, autoDraft });
+    try {
+      const { data } = await articleApi.saveWechatOptions(autoDraft);
+      setSettings((current) => current && { ...current, autoDraft: data.autoDraft });
+    } catch (reason) {
+      // 乐观切换失败时恢复服务端原值，不影响尚未保存的凭证表单。
+      setSettings((current) => current && { ...current, autoDraft: previous });
+      setError(reason instanceof Error ? reason.message : "保存开关失败");
+    } finally { setOptionsBusy(false); }
   };
 
   const test = async () => {
@@ -69,9 +85,17 @@ export function ChannelSettingsPage() {
         </Typography.Paragraph>
       </div>
 
+      <Card title="新文章自动上传草稿箱" loading={loading}>
+        <Space direction="vertical">
+          <Switch aria-label="新文章自动上传草稿箱" checked={settings?.autoDraft ?? false} loading={optionsBusy} disabled={!settings || Boolean(busy)} onChange={toggleAutoDraft} />
+          <Typography.Text type="secondary">开启后仅自动上传新入库或新采纳的文章，不补传历史文章，不自动发布。</Typography.Text>
+          {settings && (!settings.appId || !settings.hasSecret) && <Typography.Text type="warning">需配置凭证才会生效。</Typography.Text>}
+        </Space>
+      </Card>
+
       <Card title="公众号接入配置" loading={loading}>
         {settings?.source === "unreadable" && <Alert type="warning" showIcon message="公众号配置无法解密，请重新填写凭证" description="请同时填写 AppID 和新的 AppSecret，保存后将覆盖旧配置。" style={{ marginBottom: 16 }} />}
-        <Form form={form} layout="vertical" onFinish={save} onValuesChange={() => setDirty(true)} disabled={Boolean(busy) || !settings} style={{ maxWidth: 560 }}>
+        <Form form={form} layout="vertical" onFinish={save} onValuesChange={() => setDirty(true)} disabled={Boolean(busy) || optionsBusy || !settings} style={{ maxWidth: 560 }}>
           <Typography.Paragraph type="secondary">
             在微信公众平台获取开发者凭证，并将部署服务器的出口 IP 加入公众号 IP 白名单。
             配置仅供管理员管理，保存后立即生效，不会自动发布文章。

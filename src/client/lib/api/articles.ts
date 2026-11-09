@@ -7,6 +7,7 @@ export type { WechatSettingsInfo } from "../../../shared/contracts";
 export const articleApi = {
   wechatSettings: () => request<{ data: WechatSettingsInfo }>("/api/v1/channels/wechat/settings"),
   saveWechatSettings: (input: { appId: string; appSecret?: string }) => request<{ data: WechatSettingsInfo }>("/api/v1/channels/wechat/settings", { method: "PUT", body: JSON.stringify(input) }),
+  saveWechatOptions: (autoDraft: boolean) => request<{ data: { autoDraft: boolean } }>("/api/v1/channels/wechat/options", { method: "PUT", body: JSON.stringify({ autoDraft }) }),
   testWechatConnection: () => request<{ data: { connected: boolean } }>("/api/v1/channels/wechat/test", { method: "POST" }),
   list: (params = "") => request<{ data: Article[]; meta: { total: number } }>(`/api/v1/articles${params}`),
   get: (id: string) => request<{ data: Article }>(`/api/v1/articles/${id}`),

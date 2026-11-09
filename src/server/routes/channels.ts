@@ -6,7 +6,7 @@ import { requireAdminOrScopes } from "../http/middleware";
 import { requireAdminSession } from "../auth";
 import { sendError } from "../http/errors";
 import { processChannelOperation } from "../services/channel-operations";
-import { mediaAssetRepository } from "../media-library";
+import { checkDraftPreconditions, submitDraftOperation } from "../services/wechat-draft";
 import { wechatSettings } from "../wechat-settings";
 
 export function createChannelsRouter() {
@@ -23,6 +23,16 @@ export function createChannelsRouter() {
     try {
       const data = await wechatSettings.save(parsed.data);
       await repository.recordAudit({ action: "wechat.settings.update", actorType: "admin", actorId: res.locals.adminUsername });
+      return res.json({ data });
+    } catch (error) { return next(error); }
+  });
+  router.put("/channels/wechat/options", requireAdminSession, async (req, res, next) => {
+    res.set("Cache-Control", "no-store");
+    const parsed = z.object({ autoDraft: z.boolean() }).strict().safeParse(req.body);
+    if (!parsed.success) return sendError(res, 400, "INVALID_WECHAT_OPTIONS", "autoDraft 必须为布尔值");
+    try {
+      const data = await wechatSettings.saveOptions(parsed.data);
+      await repository.recordAudit({ action: "wechat.options.update", actorType: "admin", actorId: res.locals.adminUsername });
       return res.json({ data });
     } catch (error) { return next(error); }
   });
@@ -63,13 +73,14 @@ export function createChannelsRouter() {
       const draftId = z.object({ draftId: z.string().trim().min(1).optional() }).parse(req.body ?? {}).draftId;
       const article = await repository.get(String(req.params.id));
       if (!article) return sendError(res, 404, "NOT_FOUND", "文章不存在");
-      if (action === "draft" && !article.coverAssetId && !article.coverUrl && !article.images[0]) return sendError(res, 400, "COVER_REQUIRED", "创建微信公众号草稿前必须提供封面素材、coverUrl 或 images[0]");
-      if (action === "draft" && article.coverAssetId) {
-        const asset = await mediaAssetRepository.get(article.coverAssetId);
-        if (!asset || asset.status !== "active") return sendError(res, 400, "MEDIA_ASSET_UNAVAILABLE", "创建微信公众号草稿前必须提供有效的封面素材");
+      if (action === "draft") {
+        const check = await checkDraftPreconditions(article);
+        if (!check.ok) return sendError(res, check.status, check.code, check.reason);
+        const operation = await submitDraftOperation(article, { actorType: res.locals.authActorType ?? "admin", actorId: res.locals.adminUsername });
+        return res.status(202).json({ data: operation });
       }
       const capabilities = await wechatProvider.getCapabilities();
-      if ((action === "draft" && !capabilities.draft) || (action === "publish" && !capabilities.publish)) return sendError(res, 403, "CHANNEL_CAPABILITY_UNAVAILABLE", capabilities.reason ?? "当前公众号不支持此操作");
+      if (!capabilities.publish) return sendError(res, 403, "CHANNEL_CAPABILITY_UNAVAILABLE", capabilities.reason ?? "当前公众号不支持此操作");
       const operation = await repository.createOperation(article.id, action);
       await repository.recordAudit({ action: `wechat.${action}`, actorType: res.locals.authActorType ?? "admin", actorId: res.locals.adminUsername, articleId: article.id, operationId: operation.id });
       void processChannelOperation(operation.id, article.id, action, draftId);

@@ -12,7 +12,7 @@ import { mediaAssetRepository } from "../media-library";
 export function createArticlesRouter() {
   const router = Router();
   router.post("/articles/upload", requireApiToken, async (req, res, next) => {
-    try { const result = await uploadArticle(req.body); return res.status(result.created ? 201 : 200).json({ data: { article: result.article, created: result.created, capabilities: result.capabilities } }); } catch (error) { return next(error); }
+    try { const result = await uploadArticle(req.body); return res.status(result.created ? 201 : 200).json({ data: { article: result.article, created: result.created, capabilities: result.capabilities, autoDraft: result.autoDraft } }); } catch (error) { return next(error); }
   });
   router.get("/articles", requireAdminOrScopes(["articles:read"]), async (req, res, next) => {
     try { const query = z.object({ q: z.string().optional(), status: articleStatusSchema.optional(), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(20), includeArchived: z.coerce.boolean().default(false) }).parse(req.query); const result = await repository.list(query); return res.json({ data: result.items, meta: { page: query.page, pageSize: query.pageSize, total: result.total } }); } catch (error) { return next(error); }

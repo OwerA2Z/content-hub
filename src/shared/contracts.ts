@@ -142,4 +142,6 @@ export interface ApiErrorBody {
 }
 
 /** 公众号配置只返回脱敏状态，无法解密时引导管理员完整重填。 */
-export interface WechatSettingsInfo { appId: string; hasSecret: boolean; source: "saved" | "environment" | "none" | "unreadable"; }
+export type AutoDraftResult = { status: "disabled" | "not_new" } | { status: "submitted"; operationId: string } | { status: "skipped"; code: string; reason: string };
+
+export interface WechatSettingsInfo { autoDraft: boolean; appId: string; hasSecret: boolean; source: "saved" | "environment" | "none" | "unreadable"; }

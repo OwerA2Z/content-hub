@@ -1,3 +1,4 @@
+import { maybeAutoDraft } from "./wechat-draft";
 import { repository } from "../db/repository";
 import { wechatProvider } from "../channels/wechat";
 import { contentPlanningStore } from "../content-planning";
@@ -29,5 +30,6 @@ export async function uploadArticle(input: unknown) {
   }
   const result = await repository.createOrGet(uploadInput);
   await repository.recordAudit({ action: result.created ? "article.upload" : "article.upload.idempotent", actorType: "api", articleId: result.article.id });
-  return { article: result.article, created: result.created, capabilities: await wechatProvider.getCapabilities() };
+  const autoDraft = await maybeAutoDraft(result.article, result.created, { actorType: "api" });
+  return { autoDraft, article: result.article, created: result.created, capabilities: await wechatProvider.getCapabilities() };
 }
